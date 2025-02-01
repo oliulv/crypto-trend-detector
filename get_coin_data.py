@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import time
+import os
 
 def fetch_historical_prices(coin_id, days=30):
     """
@@ -15,7 +16,7 @@ def fetch_historical_prices(coin_id, days=30):
     response = requests.get(url, params=params)
     data = response.json()
 
-    # data['prices'] is a list of [timestamp, price]
+    # data['price'] is a list of [timestamp, price]
     prices = data['prices']  
     # You can also explore 'market_caps', 'total_volumes' if you want
 
@@ -26,6 +27,14 @@ def fetch_historical_prices(coin_id, days=30):
     return df
 
 if __name__ == "__main__":
-    df_prices = fetch_historical_prices(coin_id="pepe", days="max")
-    df_prices.to_csv("doge_prices.csv", index=False)
-    print("Data saved to doge_prices.csv")
+    # Fetch data for PEPE
+    df_prices = fetch_historical_prices(coin_id="pepe", days=365)
+    
+    if df_prices is not None:
+        # Ensure the 'data' folder exists
+        os.makedirs("data", exist_ok=True)
+        
+        # Save the DataFrame to CSV inside the 'data' folder
+        csv_path = os.path.join("data", "pepe_prices.csv")
+        df_prices.to_csv(csv_path, index=False)
+        print(f"Data saved to {csv_path}")
