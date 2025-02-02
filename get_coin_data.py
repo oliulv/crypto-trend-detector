@@ -184,7 +184,7 @@ def add_window_features(df):
     high_low = df['high'] - df['low']
     high_close = np.abs(df['high'] - df['close'].shift())
     low_close = np.abs(df['low'] - df['close'].shift())
-    df['true_range'] = np.max(np.concat([high_low, high_close, low_close], axis=1), axis=1)
+    df['true_range'] = np.maximum.reduce([high_low, high_close, low_close])
     df['atr'] = df['true_range'].rolling(14).mean()
 
     # MOMENTUM INDICATORS:
@@ -221,17 +221,30 @@ def add_window_features(df):
         hist = np.histogram(x, bins=10)[0]
         return entropy(hist/hist.sum())
     df['price_entropy_1h'] = df['close'].rolling(60).apply(price_entropy)
+
+    # More Momentum Features:
+    df['5m_momentum'] = df['close'].pct_change(5)  # 5-minute momentum
+    df['15m_momentum'] = df['close'].pct_change(15)  # 15-minute momentum
     
+    # More Liquidity Features:
+    df['spread_ratio'] = (df['high'] - df['low']) / df['volume'].replace(0, 1e-9)  # Spread-to-volume ratio
+
+    # More Volatility Features:
+    df['volatility_cluster'] = df['1m_roc'].rolling(30).var()  # 30-minute volatility
+
+    # More Order Flow Features:
+    df['buy_sell_ratio'] = df['taker_buy_base'] / (df['volume'] - df['taker_buy_base']).replace(0, 1e-9)
     return df
 
 # Parameters
 symbol = "PEPEUSDT"
 interval = "1m"
-start_date = "2024-01-01"
+start_date = "2023-05-20"
 end_date = datetime.now().strftime("%Y-%m-%d")
 
 # Fetch and process data
 df = fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date)
+df = add_window_features(df)
 
 # Save to CSV
 save_path = os.path.join('data', f'PEPE_1hr_window_labels_{start_date}_to_{end_date}.csv')

@@ -10,7 +10,7 @@ import seaborn as sns
 
 # 1. Load Data
 print("🕵️♂️ Loading dataset...")
-df = pd.read_csv('data/PEPE_1hr_window_labels_2024-01-01_to_2025-02-01.csv', 
+df = pd.read_csv('data/PEPE_1hr_window_labels_2023-05-20_to_2025-02-02.csv', 
                  parse_dates=['timestamp'])
 
 # 2. Prepare Features
@@ -21,7 +21,7 @@ y = df['label']
 X = X.ffill().fillna(0)
 
 # 4. Time Series Split
-split_date = df['timestamp'].max() - pd.Timedelta(days=7)
+split_date = df['timestamp'].max() - pd.Timedelta(days=100)
 train_idx = df['timestamp'] < split_date
 test_idx = df['timestamp'] >= split_date
 
@@ -63,7 +63,8 @@ print("\n🧪 Evaluating performance...")
 y_pred = model.predict(X_test)
 y_pred_class = (y_pred >= 0.5).astype(int)
 
-print(classification_report(y_test, y_pred_class))
+# Replace the existing print statement with:
+print(classification_report(y_test, y_pred_class, digits=4, target_names=['Class 0', 'Class 1']))
 print(f"AUC-ROC: {roc_auc_score(y_test, y_pred):.2f}")
 
 # 8. Save Model
