@@ -5,6 +5,7 @@ import time
 import numpy as np
 from datetime import datetime, timedelta
 import sys
+from scipy.stats import kurtosis
 
 # Create data directory if not exists
 os.makedirs('data', exist_ok=True)
@@ -242,6 +243,19 @@ def add_window_features(df):
     # Chaotic Price Features:
     df['fractal_dimension'] = df['close'].rolling(30).apply(
     lambda x: (np.log(x.max() - x.min()) - np.log(x.std())) / np.log(30))
+
+    # Advanced Technical Indicators
+    df['fib_retrace_38'] = df['close'].rolling(20).apply(lambda x: x.max() - 0.382 * (x.max() - x.min()))
+    df['fib_retrace_50'] = df['close'].rolling(20).apply(lambda x: x.max() - 0.5 * (x.max() - x.min()))
+
+    # Market Microstructure
+    df['order_flow_imbalance'] = (df['taker_buy_base'] - (df['volume'] - df['taker_buy_base'])) / df['volume']
+
+    # Statistical Features
+    df['rolling_kurtosis'] = df['close'].pct_change().rolling(30).apply(kurtosis)
+
+    # Temporal Features
+    df['lunar_phase'] = (df['timestamp'].dt.day % 29) / 29  # Simulated lunar phase
 
     return df
 

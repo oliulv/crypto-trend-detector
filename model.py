@@ -24,7 +24,7 @@ X = X.ffill().fillna(0)
 
 # 4. Time Series Split
 
-split_date = df['timestamp'].max() - pd.Timedelta(days=100)
+split_date = df['timestamp'].max() - pd.Timedelta(days=30)
 train_idx = df['timestamp'] < split_date
 test_idx = df['timestamp'] >= split_date
 
