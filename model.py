@@ -7,6 +7,8 @@ import lightgbm as lgb
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
+from bayes_opt import BayesianOptimization
+
 
 # 1. Load Data
 print("🕵️♂️ Loading dataset...")
@@ -21,7 +23,8 @@ y = df['label']
 X = X.ffill().fillna(0)
 
 # 4. Time Series Split
-split_date = df['timestamp'].max() - pd.Timedelta(days=92)
+
+split_date = df['timestamp'].max() - pd.Timedelta(days=100)
 train_idx = df['timestamp'] < split_date
 test_idx = df['timestamp'] >= split_date
 
@@ -46,15 +49,22 @@ print("\n🏋️ Training model...")
 train_data = lgb.Dataset(X_train, label=y_train)
 test_data = lgb.Dataset(X_test, label=y_test, reference=train_data)
 
+def f1_score_class1(preds, train_data):
+    labels = train_data.get_label()
+    preds_binary = (preds >= 0.5).astype(int)
+    # Compute F1-score for class 1 using your preferred method (e.g., from sklearn.metrics)
+    from sklearn.metrics import f1_score
+    return 'f1_class1', f1_score(labels, preds_binary, pos_label=1), True
 
 model = lgb.train(
     params,
     train_data,
     num_boost_round=1000,
     valid_sets=[test_data],
+    feval=f1_score_class1,
     callbacks=[
-        lgb.early_stopping(50),  # Early stopping
-        lgb.log_evaluation(50)   # Progress logging
+        lgb.early_stopping(300),
+        lgb.log_evaluation(300)
     ]
 )
 

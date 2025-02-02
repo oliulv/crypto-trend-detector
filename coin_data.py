@@ -234,6 +234,15 @@ def add_window_features(df):
 
     # More Order Flow Features:
     df['buy_sell_ratio'] = df['taker_buy_base'] / (df['volume'] - df['taker_buy_base']).replace(0, 1e-9)
+
+    # Market Depth Featues:
+    df['bid_ask_spread'] = (df['high'] - df['low']) / df['close']
+    df['depth_imbalance'] = df['taker_buy_base'] / (df['volume'] + 1e-9)
+
+    # Chaotic Price Features:
+    df['fractal_dimension'] = df['close'].rolling(30).apply(
+    lambda x: (np.log(x.max() - x.min()) - np.log(x.std())) / np.log(30))
+
     return df
 
 # Parameters
