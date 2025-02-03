@@ -140,5 +140,5 @@ print(classification_report(y_test, y_pred_class, digits=4, target_names=['Class
 print(f"AUC-ROC: {roc_auc_score(y_test, y_pred_calibrated):.2f}")
 
 # 11. Save Model with Calibrator
-joblib.dump((model_main, calibrator), 'data/pepe_pump_predictor.pkl')
-print("\n💾 Calibrated model saved to data/pepe_pump_predictor.pkl")
+joblib.dump((model_main, calibrator), 'model/pepe_pump_predictor.pkl')
+print("\n💾 Calibrated model saved to model/pepe_pump_predictor.pkl")
