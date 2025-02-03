@@ -22,6 +22,10 @@ y = df['label']
 # 3. Handle Missing Data
 X = X.ffill().fillna(0)
 
+# 3.1 Tuning Dashboard:
+weight_multiplier = 2
+class_ratio_multiplier = 2
+
 # 4. Time Series Split
 split_date = df['timestamp'].max() - pd.Timedelta(days=62)
 train_idx = df['timestamp'] < split_date
@@ -44,13 +48,13 @@ params = {
     'bagging_fraction': 0.8,
     'bagging_freq': 5,
     'verbosity': -1,
-    'scale_pos_weight': class_ratio * 2  # Prioritize Class 1
+    'scale_pos_weight': class_ratio * class_ratio_multiplier  # Prioritize Class 1
 }
 
 # 6. Train Model with Sample Weighting
 print("\n🏋️ Training model...")
 
-sample_weights = np.where(y_train == 1, 2, 1)
+sample_weights = np.where(y_train == 1, weight_multiplier, 1)
 train_data = lgb.Dataset(X_train, label=y_train, weight=sample_weights)
 test_data = lgb.Dataset(X_test, label=y_test, reference=train_data)
 
