@@ -5,7 +5,7 @@ import time
 import numpy as np
 from datetime import datetime, timedelta
 import sys
-from scipy.stats import kurtosis
+from scipy.stats import kurtosis, entropy
 
 # Create data directory if not exists
 os.makedirs('data', exist_ok=True)
@@ -217,7 +217,6 @@ def add_window_features(df):
     df['return_skew'] = df['close'].pct_change().rolling(30).skew()
 
     # Entropy (60-min window)
-    from scipy.stats import entropy
     def price_entropy(x):
         hist = np.histogram(x, bins=10)[0]
         return entropy(hist/hist.sum())

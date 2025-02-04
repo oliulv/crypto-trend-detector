@@ -1,4 +1,3 @@
-# test.py
 import pandas as pd
 import numpy as np
 import joblib
@@ -6,8 +5,10 @@ from sklearn.metrics import classification_report, roc_auc_score
 import shap
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import warnings
 
-def time_series_walk_forward_validation(model, X, y, initial_train_size=4320, step=1440):
+
+def time_series_walk_forward_validation(model, X, y, initial_train_size=43200, step=(43200*3)):
     """Walk-forward validation for time series"""
     predictions = []
     true_labels = []
@@ -32,6 +33,7 @@ def time_series_walk_forward_validation(model, X, y, initial_train_size=4320, st
             print(f"Completed {i/1440:.1f} days of backtesting")
     
     return np.array(predictions), np.array(true_labels)
+
 
 def analyze_model():
     np.seterr(invalid='ignore')  # Just to avoid that error message for now.
@@ -75,6 +77,7 @@ def analyze_model():
 
     check_data_leakage(df)
 
+
     # 1.1 Check for future data leakage
     def check_future_data_leakage(df, timestamp_col="timestamp", label_col="label"):
         print("\n🔍 Checking for future data leakage (excluding known safe fields)...")
@@ -94,7 +97,6 @@ def analyze_model():
                 leakage_found = True
         if not leakage_found:
             print("✅ No future data leakage detected (after ignoring known cyclic fields).")
-
     
     check_future_data_leakage(df)
 
@@ -109,21 +111,29 @@ def analyze_model():
         model, X_sorted, y_sorted
     )
     
-    # 3. Feature Importance with SHAP
+   # 3. Feature Importance with SHAP
     print("\n📊 Calculating feature importance...")
+
+    # Ignore expected warning
+    warnings.filterwarnings("ignore", category=UserWarning, module="shap")
+
+    # Use default model_output="raw" and check shap_values structure
     explainer = shap.TreeExplainer(model, approximate=True)
-    # sample_size = min(1000, len(X_sorted))
     shap_values = explainer.shap_values(X_sorted.iloc[:500])
-    
+
+    # For binary classification, shap_values will be a list of two arrays:
+    # [negative_class_shap, positive_class_shap]
+    if isinstance(shap_values, list):
+        # Use index 1 for positive class SHAP values
+        plot_values = shap_values[1]
+    else:
+        # If single array returned (some SHAP versions), use directly
+        plot_values = shap_values
+
     plt.figure(figsize=(12, 8))
-    shap.summary_plot(shap_values[1], X_sorted.iloc[:500], plot_type="bar")
+    shap.summary_plot(plot_values, X_sorted.iloc[:500], plot_type="bar")
     plt.savefig('reports/feature_importance.png')
     plt.close()
-    
-    # 4. Final Evaluation
-    print("\n📈 Final Performance Metrics:")
-    print(classification_report(true_labels, (predictions >= 0.5).astype(int)))
-    print(f"AUC-ROC: {roc_auc_score(true_labels, predictions):.2f}")
 
 if __name__ == "__main__":
     analyze_model()
