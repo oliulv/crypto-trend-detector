@@ -5,16 +5,26 @@ import shap
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import warnings
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report, roc_auc_score
+
+# Parameters:
+symbol = "PEPEUSDT"
+start_date = "2023-05-20"
+end_date = "2025-02-04"
 
 
-def analyze_model():
+def analyze_model(symbol, start_date, end_date):
     np.seterr(invalid='ignore')  # Just to avoid that error message for now.
 
     # Load model and data
-    model, calibrator = joblib.load('model/pepe_pump_predictor.pkl')
-    df = pd.read_csv('data/PEPE_1hr_window_labels_2023-05-20_to_2025-02-02.csv', 
-                    parse_dates=['timestamp'])
+    loaded = joblib.load(f'model/{symbol}_pump_predictor.pkl')
+    # Fix: if loaded is a tuple, extract the model
+    if isinstance(loaded, tuple):
+        model = loaded[0]
+    else:
+        model = loaded
+    df = pd.read_csv(f'data/{symbol}_1hr_window_labels_{start_date}_to_{end_date}.csv', 
+                     parse_dates=['timestamp'])
     
     df = df.sort_values(by="timestamp", ascending=True)  # Ensures chronological order
     
@@ -32,14 +42,15 @@ def analyze_model():
     print("\n🧪 Performing walk-forward validation...")
     X_sorted = X.sort_values(by='timestamp', ascending=True).drop(columns='timestamp')
     y_sorted = y[X_sorted.index]
-
     
-    predictions, true_labels = time_series_walk_forward_validation(
-        model, X_sorted, y_sorted
+    # 2. Store walk forward return values
+    # Set initial_train_size to 6 months (43200 minutes per month * 6)
+    predictions, true_labels, iteration_reports = time_series_walk_forward_validation(
+        model, X_sorted, y_sorted, threshold=0.613, initial_train_size=(43200*6), step=43200
     )
     
     # Print and save validation results
-    print_validation_results(predictions, true_labels)  # See code below
+    print_validation_results(predictions, true_labels, iteration_reports, threshold=0.613)
     
    # 3. Feature Importance with SHAP
     print("\n📊 Calculating feature importance...")
@@ -66,11 +77,14 @@ def analyze_model():
     plt.close()
 
 
-def time_series_walk_forward_validation(model, X, y, initial_train_size=43200, step=(43200*3)):
-    """Walk-forward validation for time series"""
-    predictions = []
-    true_labels = []
-    
+def time_series_walk_forward_validation(model, X, y, threshold=0.613, initial_train_size=(43200*6), step=43200):
+    """Walk-forward validation for time series.
+       Also returns per-iteration classification metrics (as dictionaries).
+    """
+    aggregated_predictions = []
+    aggregated_true_labels = []
+    iteration_reports = []  # To store per-iteration metrics
+        
     for i in tqdm(range(initial_train_size, len(X), step), desc="Walk-forward validation"):
         # Split data
         X_train = X.iloc[:i]
@@ -81,16 +95,24 @@ def time_series_walk_forward_validation(model, X, y, initial_train_size=43200, s
         # Retrain model on expanding window
         model.fit(X_train, y_train)
         
-        # Make predictions
+        # Get predictions
         preds = model.predict_proba(X_test)[:, 1]
-        predictions.extend(preds)
-        true_labels.extend(y_test)
-
-        # Print progress:
-        if i % 10000 == 0:  # Every ~7 days
+        
+        # Convert to binary predictions using the given threshold
+        binary_preds = (preds >= threshold).astype(int)
+        
+        # Append predictions and true labels for aggregated metrics
+        aggregated_predictions.extend(preds)
+        aggregated_true_labels.extend(y_test)
+        
+        # Compute iteration classification report using the imported classification_report
+        report = classification_report(y_test, binary_preds, output_dict=True, target_names=['Class 0', 'Class 1'])
+        iteration_reports.append(report)
+        
+        if i % 10000 == 0:
             print(f"Completed {i/1440:.1f} days of backtesting")
     
-    return np.array(predictions), np.array(true_labels)
+    return (np.array(aggregated_predictions), np.array(aggregated_true_labels), iteration_reports)
 
 
 def check_data_leakage(df):
@@ -122,7 +144,7 @@ def check_data_leakage(df):
 def check_future_data_leakage(df, timestamp_col="timestamp", label_col="label"):
     print("\n🔍 Checking for future data leakage (excluding known safe fields)...")
     ignore_cols = {'hour', 'minute', 'hour_sin', 'hour_cos', 'day_of_week', 'is_weekend',
-                'asian_session', 'us_session'}
+                   'asian_session', 'us_session'}
     feature_cols = [col for col in df.columns if col not in [timestamp_col, label_col] and col not in ignore_cols]
     
     leakage_found = False
@@ -137,41 +159,69 @@ def check_future_data_leakage(df, timestamp_col="timestamp", label_col="label"):
             leakage_found = True
     if not leakage_found:
         print("✅ No future data leakage detected (after ignoring known cyclic fields).")
-    
 
-def print_validation_results(predictions, true_labels, threshold=0.5):
-    """Print the results of the walk-forward validation"""
-    # Convert probabilities to binary predictions using the threshold
-    binary_predictions = (predictions >= threshold).astype(int)
+
+def print_validation_results(aggregated_predictions, aggregated_true_labels, iteration_reports, threshold=0.613):
+    # Compute overall aggregated binary predictions using the threshold
+    binary_predictions = (aggregated_predictions >= threshold).astype(int)
     
-    # Calculate metrics
-    accuracy = accuracy_score(true_labels, binary_predictions)
-    precision = precision_score(true_labels, binary_predictions)
-    recall = recall_score(true_labels, binary_predictions)
-    f1 = f1_score(true_labels, binary_predictions)
+    # Compute overall metrics using the imported functions
+    overall_accuracy = accuracy_score(aggregated_true_labels, binary_predictions)
+    overall_precision = precision_score(aggregated_true_labels, binary_predictions, zero_division=0)
+    overall_recall = recall_score(aggregated_true_labels, binary_predictions, zero_division=0)
+    overall_f1 = f1_score(aggregated_true_labels, binary_predictions, zero_division=0)
+    overall_cm = confusion_matrix(aggregated_true_labels, binary_predictions)
+    overall_auc = roc_auc_score(aggregated_true_labels, aggregated_predictions)
     
-    # Confusion matrix
-    cm = confusion_matrix(true_labels, binary_predictions)
+    print("\n📊 Overall Aggregated Validation Results:")
+    print(f"Accuracy:  {overall_accuracy:.4f}")
+    print(f"Precision: {overall_precision:.4f}")
+    print(f"Recall:    {overall_recall:.4f}")
+    print(f"F1-Score:  {overall_f1:.4f}")
+    print("Confusion Matrix:")
+    print(overall_cm)
+    print(f"AUC-ROC:   {overall_auc:.4f}\n")
     
-    # Print results
-    print("\n📊 Walk-forward Validation Results:")
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1-Score: {f1:.4f}")
-    print("\nConfusion Matrix:")
-    print(cm)
+    # Also, display the classification report (which uses the imported classification_report)
+    print("Classification Report (Aggregated):")
+    print(classification_report(aggregated_true_labels, binary_predictions, digits=4, target_names=['Class 0', 'Class 1']))
     
-    # Save report to a file
-    with open('reports/validation_report.txt', 'w') as f:
-        f.write("Walk-forward Validation Results:\n")
-        f.write(f"Accuracy: {accuracy:.4f}\n")
-        f.write(f"Precision: {precision:.4f}\n")
-        f.write(f"Recall: {recall:.4f}\n")
-        f.write(f"F1-Score: {f1:.4f}\n")
-        f.write("\nConfusion Matrix:\n")
-        f.write(np.array2string(cm))
+    # Average the per-iteration reports (these are produced by classification_report output_dict)
+    avg_metrics = {}
+    keys = iteration_reports[0].keys()  # e.g. 'Class 0', 'Class 1', 'accuracy', 'macro avg', 'weighted avg'
+    for key in keys:
+        if isinstance(iteration_reports[0][key], dict):
+            avg_metrics[key] = {}
+            for subkey in iteration_reports[0][key]:
+                avg_metrics[key][subkey] = np.mean([report[key][subkey] for report in iteration_reports if key in report])
+        else:
+            avg_metrics[key] = np.mean([report[key] for report in iteration_reports if key in report])
+    
+    print("📊 Average Per-Iteration Metrics (based on predictions):")
+    print("              precision    recall  f1-score   support")
+    for class_name in ['Class 0', 'Class 1']:
+        if class_name in overall_cm:  # Use overall report keys to check
+            precision = np.mean([report[class_name]['precision'] for report in iteration_reports if class_name in report])
+            recall = np.mean([report[class_name]['recall'] for report in iteration_reports if class_name in report])
+            f1 = np.mean([report[class_name]['f1-score'] for report in iteration_reports if class_name in report])
+            support = np.sum([report[class_name]['support'] for report in iteration_reports if class_name in report])
+            print(f"{class_name:>10} {precision:10.4f} {recall:10.4f} {f1:10.4f} {int(support):10d}")
+    
+    overall_iter_accuracy = np.mean([report['accuracy'] for report in iteration_reports if 'accuracy' in report])
+    macro_precision = np.mean([report['macro avg']['precision'] for report in iteration_reports if 'macro avg' in report])
+    macro_recall = np.mean([report['macro avg']['recall'] for report in iteration_reports if 'macro avg' in report])
+    macro_f1 = np.mean([report['macro avg']['f1-score'] for report in iteration_reports if 'macro avg' in report])
+    
+    weighted_precision = np.mean([report['weighted avg']['precision'] for report in iteration_reports if 'weighted avg' in report])
+    weighted_recall = np.mean([report['weighted avg']['recall'] for report in iteration_reports if 'weighted avg' in report])
+    weighted_f1 = np.mean([report['weighted avg']['f1-score'] for report in iteration_reports if 'weighted avg' in report])
+    
+    print(f"\nOverall Accuracy (averaged over iterations): {overall_iter_accuracy:.4f}")
+    print("\nMacro Average (averaged over iterations):")
+    print(f"Precision: {macro_precision:.4f}, Recall: {macro_recall:.4f}, F1-Score: {macro_f1:.4f}")
+    print("\nWeighted Average (averaged over iterations):")
+    print(f"Precision: {weighted_precision:.4f}, Recall: {weighted_recall:.4f}, F1-Score: {weighted_f1:.4f}")
 
 
 if __name__ == "__main__":
-    analyze_model()
+    analyze_model(symbol, start_date, end_date)

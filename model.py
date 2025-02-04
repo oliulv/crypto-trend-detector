@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score
 from lightgbm import LGBMClassifier
 import joblib
@@ -9,10 +9,16 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.isotonic import IsotonicRegression
 
 
-def train_model():
+# Parameters:
+symbol = "PEPEUSDT"
+start_date = "2023-05-20"
+end_date = "2025-02-04"
+
+
+def train_model(symbol, start_date, end_date):
     # 1. Load Data
     print("🕵️♂️ Loading dataset...")
-    df = pd.read_csv('data/PEPE_1hr_window_labels_2023-05-20_to_2025-02-02.csv', 
+    df = pd.read_csv(f'data/{symbol}_1hr_window_labels_{start_date}_to_{end_date}.csv', 
                     parse_dates=['timestamp'])
 
     # 2. Prepare Features
@@ -65,7 +71,7 @@ def train_model():
         eval_set=[(X_test, y_test)],  # Validation set for early stopping
     )
 
-    # 7. Calibrate Probabilities (Updated)
+    # 7. Calibrate Probabilities
     print("\n🔧 Calibrating probabilities...")
 
     # Split training data into main/validation sets (time-series safe)
@@ -73,12 +79,12 @@ def train_model():
         X_train, y_train, test_size=0.2, shuffle=False
     )
 
-    # --- NEW: Split sample weights to match the data splits ---
+    # Split sample weights to match the data splits
     n_main = len(X_train_main)
     sample_weights_main = sample_weights[:n_main]  # Defined in original training
     sample_weights_val = sample_weights[n_main:]
 
-    # --- Get cleaned model parameters ---
+    # Get cleaned model parameter
     model_params = model.get_params().copy()
     # Remove parameters requiring validation data
     for param in ['early_stopping_round', 'eval_metric', 'eval_set']:
@@ -94,7 +100,7 @@ def train_model():
     val_probs = model_main.predict_proba(X_val)[:, 1]
 
     # Train isotonic calibrator
-    calibrator = IsotonicRegression(out_of_bounds='clip').fit(val_probs, y_val)
+    calibrator = IsotonicRegression(out_of_bounds='clip').fit(val_probs, y_val, sample_weight=sample_weights_val)
 
     # Apply calibration to test set probabilities
     y_pred_calibrated = calibrator.transform(
@@ -141,9 +147,9 @@ def train_model():
     print(f"AUC-ROC: {roc_auc_score(y_test, y_pred_calibrated):.2f}")
 
     # 11. Save Model with Calibrator
-    joblib.dump((model_main, calibrator), 'model/pepe_pump_predictor.pkl')
-    print("\n💾 Calibrated model saved to model/pepe_pump_predictor.pkl")
+    joblib.dump((model_main, calibrator), f'model/{symbol}_pump_predictor.pkl')
+    print(f"\n💾 Calibrated model saved to model/{symbol}_pump_predictor.pkl")
 
 
 if __name__ == "__main__":
-    train_model()
+    train_model(symbol, start_date, end_date)

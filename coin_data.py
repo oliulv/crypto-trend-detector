@@ -3,14 +3,23 @@ import requests
 import pandas as pd
 import time
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 from scipy.stats import kurtosis, entropy
+
+
+# Parameters:
+symbol = "PEPEUSDT"
+interval = "1m"
+start_date = "2023-05-20"
+end_date = datetime.now().strftime("%Y-%m-%d")
+
 
 # Create data directory if not exists
 os.makedirs('data', exist_ok=True)
 
 
+# Terminal visuals for vibes
 class TerminalVisuals:
     @staticmethod
     def fetch_animation(iteration, total):
@@ -45,7 +54,7 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     
     # Add mystical header
     TerminalVisuals.crypto_header()
-    print(f"\033[35m•_ Starting PEPE data ritual ••_\033[0m")
+    print(f"\033[35m•_ Starting {symbol} data ritual ••_\033[0m")
     print(f"\033[33mTime Range: {start_date} → {end_date}\033[0m\n")
     
     total_pages = ((end_time - start_time) // (1000 * 60 * 1000)) + 1
@@ -95,12 +104,12 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
     
     # Calculate future window label
-    df = create_window_label(df)
+    df = create_label(df)
     
     return df
 
 
-def create_window_label(df):
+def create_label(df):
     # Calculate future max (ONLY FOR LABEL)
     future_max = df['close'].shift(-1).rolling(60, min_periods=60).max()
     
@@ -108,7 +117,7 @@ def create_window_label(df):
     df['label'] = ((future_max - df['close']) / df['close'] >= 0.05).astype(int)
     
     # Drop future-dependent columns
-    df = df.drop(columns=['future_max', 'max_price_change_pct'], errors='ignore')
+    df = df.drop(columns=['future_max'], errors='ignore')
     
     # Remove rows without future data
     df = df.dropna(subset=['label'])
@@ -117,18 +126,13 @@ def create_window_label(df):
                'num_trades', 'taker_buy_base', 'taker_buy_quote', 'label']]
 
 
-def add_window_features(df):
-    # FIX: Prevent SettingWithCopyWarning
+def add_extra_features(df):
     df = df.copy()
     
-    # FIX: Corrected pct_change() typo
     df['1m_roc'] = df['close'].pct_change()
     df['30m_volatility'] = df['1m_roc'].rolling(30).std() * np.sqrt(30)
-    
-    # FIX: Proper z-score calculation
     df['volume_zscore_15m'] = (df['volume'] - df['volume'].rolling(15).mean()
                                ) / df['volume'].rolling(15).std()
-    
     df['buy_pressure'] = df['taker_buy_base'] / df['volume'].replace(0, np.nan)
     df['hour'] = df['timestamp'].dt.hour
     df['minute'] = df['timestamp'].dt.minute
@@ -271,18 +275,12 @@ def add_window_features(df):
     return df
 
 
-# Parameters
-symbol = "PEPEUSDT"
-interval = "1m"
-start_date = "2023-05-20"
-end_date = datetime.now().strftime("%Y-%m-%d")
-
 # Fetch and process data
 df = fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date)
-df = add_window_features(df)
+df = add_extra_features(df)
 
 # Save to CSV
-save_path = os.path.join('data', f'PEPE_1hr_window_labels_{start_date}_to_{end_date}.csv')
+save_path = os.path.join('data', f'{symbol}_1hr_window_labels_{start_date}_to_{end_date}.csv')
 df.to_csv(save_path, index=False)
 
 # Final mystical output
