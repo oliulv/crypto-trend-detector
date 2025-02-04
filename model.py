@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
 from sklearn.isotonic import IsotonicRegression
 
+
 def train_model():
     # 1. Load Data
     print("🕵️♂️ Loading dataset...")

@@ -10,6 +10,7 @@ from scipy.stats import kurtosis, entropy
 # Create data directory if not exists
 os.makedirs('data', exist_ok=True)
 
+
 class TerminalVisuals:
     @staticmethod
     def fetch_animation(iteration, total):
@@ -33,6 +34,7 @@ class TerminalVisuals:
     ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
     \033[0m
         """)
+
 
 def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     base_url = "https://api.binance.com/api/v3/klines"
@@ -97,6 +99,7 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     
     return df
 
+
 def create_window_label(df):
     # Calculate future max (ONLY FOR LABEL)
     future_max = df['close'].shift(-1).rolling(60, min_periods=60).max()
@@ -113,6 +116,7 @@ def create_window_label(df):
     return df[['timestamp', 'open', 'high', 'low', 'close', 'volume',
                'num_trades', 'taker_buy_base', 'taker_buy_quote', 'label']]
 
+
 def add_window_features(df):
     # FIX: Prevent SettingWithCopyWarning
     df = df.copy()
@@ -122,7 +126,8 @@ def add_window_features(df):
     df['30m_volatility'] = df['1m_roc'].rolling(30).std() * np.sqrt(30)
     
     # FIX: Proper z-score calculation
-    df['volume_zscore_15m'] = (df['volume'] - df['volume'].rolling(15).mean()) / df['volume'].rolling(15).std()
+    df['volume_zscore_15m'] = (df['volume'] - df['volume'].rolling(15).mean()
+                               ) / df['volume'].rolling(15).std()
     
     df['buy_pressure'] = df['taker_buy_base'] / df['volume'].replace(0, np.nan)
     df['hour'] = df['timestamp'].dt.hour
@@ -174,11 +179,13 @@ def add_window_features(df):
 
     # MARKET MICROSTRUCTURE:
     # Order Book Imbalance
-    df['order_imbalance'] = (df['taker_buy_base'] - (df['volume'] - df['taker_buy_base'])) / df['volume']
+    df['order_imbalance'] = (df['taker_buy_base'] - (df['volume'] - 
+                             df['taker_buy_base'])) / df['volume']
 
     # Large Trade Dominance (using num_trades)
     df['avg_trade_size'] = df['volume'] / df['num_trades']
-    df['large_trade_flag'] = (df['avg_trade_size'] > df['avg_trade_size'].rolling(60).quantile(0.9)).astype(int)   
+    df['large_trade_flag'] = (df['avg_trade_size'] > 
+                              df['avg_trade_size'].rolling(60).quantile(0.9)).astype(int)   
 
     # ADVANCED VOLATILITY:
     # Average True Range (14-period)
@@ -227,13 +234,15 @@ def add_window_features(df):
     df['15m_momentum'] = df['close'].pct_change(15)  # 15-minute momentum
     
     # More Liquidity Features:
-    df['spread_ratio'] = (df['high'] - df['low']) / df['volume'].replace(0, 1e-9)  # Spread-to-volume ratio
+    df['spread_ratio'] = (df['high'] - df['low']) / \
+        df['volume'].replace(0, 1e-9)  # Spread-to-volume ratio
 
     # More Volatility Features:
     df['volatility_cluster'] = df['1m_roc'].rolling(30).var()  # 30-minute volatility
 
     # More Order Flow Features:
-    df['buy_sell_ratio'] = df['taker_buy_base'] / (df['volume'] - df['taker_buy_base']).replace(0, 1e-9)
+    df['buy_sell_ratio'] = df['taker_buy_base'] / \
+        (df['volume'] - df['taker_buy_base']).replace(0, 1e-9)
 
     # Market Depth Featues:
     df['bid_ask_spread'] = (df['high'] - df['low']) / df['close']
@@ -241,14 +250,17 @@ def add_window_features(df):
 
     # Chaotic Price Features:
     df['fractal_dimension'] = df['close'].rolling(30).apply(
-    lambda x: (np.log(x.max() - x.min()) - np.log(x.std())) / np.log(30))
+        lambda x: (np.log(x.max() - x.min()) - np.log(x.std())) / np.log(30))
 
     # Advanced Technical Indicators
-    df['fib_retrace_38'] = df['close'].rolling(20).apply(lambda x: x.max() - 0.382 * (x.max() - x.min()))
-    df['fib_retrace_50'] = df['close'].rolling(20).apply(lambda x: x.max() - 0.5 * (x.max() - x.min()))
+    df['fib_retrace_38'] = df['close'].rolling(20).apply(
+        lambda x: x.max() - 0.382 * (x.max() - x.min()))
+    df['fib_retrace_50'] = df['close'].rolling(20).apply(
+        lambda x: x.max() - 0.5 * (x.max() - x.min()))
 
     # Market Microstructure
-    df['order_flow_imbalance'] = (df['taker_buy_base'] - (df['volume'] - df['taker_buy_base'])) / df['volume']
+    df['order_flow_imbalance'] = (
+        df['taker_buy_base'] - (df['volume'] - df['taker_buy_base'])) / df['volume']
 
     # Statistical Features
     df['rolling_kurtosis'] = df['close'].pct_change().rolling(30).apply(kurtosis)
@@ -257,6 +269,7 @@ def add_window_features(df):
     df['lunar_phase'] = (df['timestamp'].dt.day % 29) / 29  # Simulated lunar phase
 
     return df
+
 
 # Parameters
 symbol = "PEPEUSDT"
