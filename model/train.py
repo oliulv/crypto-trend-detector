@@ -38,7 +38,7 @@ def train_model(symbol, start_date, end_date):
     class_ratio_multiplier = 2
 
     # 4. Time Series Split
-    split_date = df['timestamp'].max() - pd.Timedelta(days=62)
+    split_date = df['timestamp'].max() - pd.Timedelta(days=100)
     train_idx = df['timestamp'] < split_date
     test_idx = df['timestamp'] >= split_date
 
