@@ -7,6 +7,7 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve
 from sklearn.isotonic import IsotonicRegression
+import os
 
 
 # Parameters:
@@ -18,8 +19,12 @@ end_date = "2025-02-04"
 def train_model(symbol, start_date, end_date):
     # 1. Load Data
     print("🕵️♂️ Loading dataset...")
-    df = pd.read_csv(f'data/{symbol}_1hr_window_labels_{start_date}_to_{end_date}.csv', 
-                    parse_dates=['timestamp'])
+
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    data_filename = f'{symbol}_1hr_window_labels_{start_date}_to_{end_date}.csv'
+    data_path = os.path.join(project_root, 'data', data_filename)
+    
+    df = pd.read_csv(data_path, parse_dates=['timestamp'])
 
     # 2. Prepare Features
     X = df.drop(columns=['label', 'timestamp'])
