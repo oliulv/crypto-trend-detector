@@ -7,7 +7,7 @@ from scipy.stats import kurtosis, entropy
 
 
 class LiveFeatureEngine:
-    def __init__(self, lookback=1440, symbol="PEPEUSDT"):
+    def __init__(self, lookback=240, symbol="PEPEUSDT"):
         self.buffer = deque(maxlen=lookback)
         self.required_columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume',
                                  'num_trades', 'taker_buy_base', 'taker_buy_quote']
@@ -23,7 +23,7 @@ class LiveFeatureEngine:
             print(f"⚠️ Warning: Could not load historical data: {e}")
 
     @staticmethod
-    def fetch_historical_binance(symbol, interval='1m', lookback=1440):
+    def fetch_historical_binance(symbol, interval='1m', lookback=240):
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={lookback}"
         response = requests.get(url)
         if response.status_code != 200:
@@ -133,9 +133,11 @@ class LiveFeatureEngine:
         temp['macd'] = temp['ema12'] - temp['ema26']
         features['macd'] = temp['macd'].iloc[-1]
 
-        # Bollinger Bands %B (using window=20)
+        # Bollinger Bands calculations
         temp['ma_20'] = temp['close'].rolling(20).mean()
         temp['std_20'] = temp['close'].rolling(20).std()
+        features['ma_20'] = temp['ma_20'].iloc[-1]  # Add this line
+        features['std_20'] = temp['std_20'].iloc[-1]  # Add this line
         temp['bollinger_pct_b'] = (temp['close'] - (temp['ma_20'] - 2 * temp['std_20'])) / (4 * temp['std_20'])
         features['bollinger_pct_b'] = temp['bollinger_pct_b'].iloc[-1]
 

@@ -56,18 +56,19 @@ class LiveTradingBot:
         """Get feature columns in correct order from training data"""
         # These should match exactly what your model was trained on
         return [
-            'open', 'high', 'low', 'close', 'volume', 'num_trades',
-            'taker_buy_base', 'taker_buy_quote', '1m_roc', '30m_volatility',
-            'volume_zscore_15m', 'buy_pressure', 'hour', 'minute', '1h_volatility',
-            '4h_ma_spread', 'volume_spike_15m', 'buy_sell_imbalance', 'hour_sin',
-            'hour_cos', 'rsi', 'macd', 'bollinger_pct_b', 'ichimoku_conv', 'obv',
-            'vpt', 'order_imbalance', 'avg_trade_size', 'large_trade_flag', 'true_range',
-            'atr', 'stochastic_%k', 'mfi', 'day_of_week', 'is_weekend', 'asian_session',
-            'us_session', 'return_skew', 'price_entropy_1h', '5m_momentum', '15m_momentum',
-            'spread_ratio', 'volatility_cluster', 'buy_sell_ratio', 'bid_ask_spread',
-            'depth_imbalance', 'fractal_dimension', 'fib_retrace_38', 'fib_retrace_50',
-            'order_flow_imbalance', 'rolling_kurtosis', 'lunar_phase'
-        ]
+                'open', 'high', 'low', 'close', 'volume', 'num_trades',
+                'taker_buy_base', 'taker_buy_quote', '1m_roc', '30m_volatility',
+                'volume_zscore_15m', 'buy_pressure', 'hour', 'minute', '1h_volatility',
+                '4h_ma_spread', 'volume_spike_15m', 'buy_sell_imbalance', 'hour_sin',
+                'hour_cos', 'rsi', 'macd', 'ma_20', 'std_20', 'bollinger_pct_b',
+                'ichimoku_conv', 'obv', 'vpt', 'order_imbalance', 'avg_trade_size',
+                'large_trade_flag', 'true_range', 'atr', 'stochastic_%k', 'mfi',
+                'day_of_week', 'is_weekend', 'asian_session', 'us_session', 'return_skew',
+                'price_entropy_1h', '5m_momentum', '15m_momentum', 'spread_ratio',
+                'volatility_cluster', 'buy_sell_ratio', 'bid_ask_spread', 'depth_imbalance',
+                'fractal_dimension', 'fib_retrace_38', 'fib_retrace_50',
+                'order_flow_imbalance', 'rolling_kurtosis', 'lunar_phase'
+            ]
 
     async def run(self):
         print("⏳ Loading and connecting to Binance WebSocket stream...")
