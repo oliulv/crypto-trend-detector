@@ -18,4 +18,6 @@ class Prediction(Base):
     prediction = Column(Integer, nullable=False)  
     probability = Column(Float, nullable=False)   
     confidence = Column(String, nullable=False)
+    prediction_close = Column(Float, nullable=False)
+    hour_close = Column(Float, nullable=True)
     actual_outcome = Column(Integer, nullable=True)

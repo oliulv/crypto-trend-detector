@@ -18,7 +18,8 @@ except Exception as e:
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    # Base.metadata.drop_all(bind=engine)  # Delete existing tables
+    Base.metadata.create_all(bind=engine)  # Create new ones
 
 
 if __name__ == "__main__":

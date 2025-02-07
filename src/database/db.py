@@ -26,7 +26,7 @@ def get_db():
         db.close()
 
 
-def log_prediction(symbol, prediction, probability, confidence, timestamp):
+def log_prediction(symbol, prediction, probability, confidence, timestamp, prediction_close):
     """
     Log a prediction to the database with proper type conversion.
     
@@ -42,14 +42,18 @@ def log_prediction(symbol, prediction, probability, confidence, timestamp):
         # Convert NumPy types to Python native types
         prediction_value = int(prediction) if isinstance(prediction, (np.integer, np.bool_)) else prediction
         probability_value = float(probability) if isinstance(probability, np.floating) else probability
+        prediction_close = float(prediction_close) if isinstance(prediction_close, np.floating) else prediction_close
         
         new_entry = Prediction(
-            symbol=symbol,
-            prediction=prediction_value,    # Now using converted value
-            probability=probability_value,  # Now using converted value
-            confidence=confidence,
-            timestamp=timestamp
-        )
+                symbol=symbol,
+                prediction=prediction_value,
+                probability=probability_value,
+                confidence=confidence,
+                timestamp=timestamp,
+                prediction_close=prediction_close,
+                hour_close=None,
+                actual_outcome=None
+            )
         db.add(new_entry)
         db.commit()
         print(f"✅ Successfully logged prediction to database")

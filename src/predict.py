@@ -3,12 +3,15 @@ import websockets
 import json
 import joblib
 import os
+import requests
+import sys
 import pandas as pd
 from datetime import datetime
+from database.classes import Prediction
 from feature_engine import LiveFeatureEngine
-import sys
 from database.db import log_prediction
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from database.db import SessionLocal
 
 
 async def spinner_task():
@@ -75,6 +78,7 @@ class LiveTradingBot:
     async def run(self):
             print("⏳ Loading and connecting to Binance WebSocket stream...")
             spinner_handle = asyncio.create_task(spinner_task())
+            outcome_updater = asyncio.create_task(self.update_actual_outcomes())
 
             uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
             async with websockets.connect(uri) as ws:
@@ -97,7 +101,8 @@ class LiveTradingBot:
                                     prediction=pred_results['prediction'],
                                     probability=pred_results['probability'],
                                     confidence=pred_results['confidence'],
-                                    timestamp=datetime.fromtimestamp(candle['t'] / 1000)
+                                    timestamp=datetime.fromtimestamp(candle['t'] / 1000),
+                                    prediction_close=float(candle['c'])  # NEW: Add this line
                                 )
 
                                 print("\nWaiting for next candle...")
@@ -105,6 +110,7 @@ class LiveTradingBot:
                     print(f"\nError: {str(e)}")
                 finally:
                     spinner_handle.cancel()
+                    outcome_updater.cancel()
 
     def make_prediction(self, features):
         """Convert features to model input and predict"""
@@ -138,6 +144,56 @@ class LiveTradingBot:
             print(f"🔮 Prediction: No Pump (Confidence: {pred_results['confidence']} [{pred_results['probability']:.20%}])")
         
         print(f"📈 Price: {candle['c']} | Volume: {candle['v']}")
+
+    async def update_actual_outcomes(self):
+        """Check every minute for predictions older than 1 hour and update their actual_outcome."""
+        while True:
+            await asyncio.sleep(60)
+            try:
+                db = SessionLocal()
+                now_utc = datetime.now(timezone.utc)
+                one_hour_ago = now_utc - timedelta(hours=1)
+                one_hour_ago_naive = one_hour_ago.replace(tzinfo=None)
+
+                predictions = db.query(Prediction).filter(
+                    Prediction.timestamp <= one_hour_ago_naive,
+                    Prediction.actual_outcome == None
+                ).all()
+
+                for pred in predictions:
+                    target_time = pred.timestamp + timedelta(hours=1)
+                    start_time = int(target_time.timestamp() * 1000)
+                    url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&limit=1"
+                    
+                    try:
+                        response = requests.get(url)
+                        response.raise_for_status()  # Raise exception for 4xx/5xx status codes
+                        
+                        data = response.json()
+                        
+                        # Validate response structure
+                        if not data or not isinstance(data, list) or len(data[0]) < 5:
+                            print(f"⚠️ Invalid data format for prediction {pred.id}")
+                            continue
+                            
+                        actual_close = float(data[0][4])
+                        price_change = (actual_close - pred.prediction_close) / pred.prediction_close
+                        pred.actual_close = actual_close
+                        pred.actual_outcome = 1 if price_change >= 0.02 else 0
+                        db.commit()
+                        print(f"✅ Updated outcome for prediction {pred.id}")
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"🔴 API Error for prediction {pred.id}: {str(e)}")
+                    except json.JSONDecodeError:
+                        print(f"🔴 Invalid JSON response for prediction {pred.id}")
+                    except IndexError:
+                        print(f"🔴 Missing data in API response for prediction {pred.id}")
+
+            except Exception as e:
+                print(f"❌ Error updating outcomes: {e}")
+            finally:
+                db.close()
 
 
 if __name__ == "__main__":
