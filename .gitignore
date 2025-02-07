@@ -1,4 +1,6 @@
-pretrain/data/
+day1bs/data/
 venv/
 src/__pycache__/
+src/database/__pycache__/
 .DS_Store
+.env

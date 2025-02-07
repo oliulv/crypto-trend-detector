@@ -3,9 +3,11 @@ lightgbm==4.5.0
 matplotlib==3.10.0
 numpy==2.2.2
 pandas==2.2.3
+python-dotenv==1.0.1
 Requests==2.32.3
 scikit_learn==1.6.1
 scipy==1.15.1
 shap==0.46.0
+SQLAlchemy==2.0.38
 tqdm==4.67.1
 websockets==14.2

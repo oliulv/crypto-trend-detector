@@ -7,6 +7,8 @@ import pandas as pd
 from datetime import datetime
 from feature_engine import LiveFeatureEngine
 import sys
+from database.db import log_prediction
+from datetime import datetime
 
 
 async def spinner_task():
@@ -31,7 +33,7 @@ class LiveTradingBot:
         """Load trained model, handling tuple cases (model, calibrator)."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         model_filename = f'{self.symbol}_pump_predictor.pkl'
-        model_path = os.path.join(project_root, 'model', model_filename)
+        model_path = os.path.join(project_root, 'models', model_filename)
 
         try:
             model_tuple = joblib.load(model_path)
@@ -71,52 +73,53 @@ class LiveTradingBot:
             ]
 
     async def run(self):
-        print("⏳ Loading and connecting to Binance WebSocket stream...")
-        # Start the spinner task on its own
-        spinner_handle = asyncio.create_task(spinner_task())
+            print("⏳ Loading and connecting to Binance WebSocket stream...")
+            spinner_handle = asyncio.create_task(spinner_task())
 
-        uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
-        async with websockets.connect(uri) as ws:
-            try:
-                while True:
-                    message = await ws.recv()
-                    data = json.loads(message)
-                    candle = data['k']
+            uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
+            async with websockets.connect(uri) as ws:
+                try:
+                    while True:
+                        message = await ws.recv()
+                        data = json.loads(message)
+                        candle = data['k']
 
-                    if candle['x']:  # Only process closed candles
-                        features = self.feature_engine.process_new_candle(candle)
-                        if features is not None:
-                            prediction = self.make_prediction(features)
-                            self.handle_prediction(prediction, candle)
-                            # Optionally, print a message to indicate processing is complete
-                            print("\nWaiting for next candle...")
-            except Exception as e:
-                print(f"\nError: {str(e)}")
-            finally:
-                spinner_handle.cancel()  # Cancel the spinner task when done
+                        if candle['x']:  # Only process closed candles
+                            features = self.feature_engine.process_new_candle(candle)
+                            if features is not None:
+                                pred_results = self.make_prediction(features)
+                                # Pass the entire pred_results dictionary
+                                self.handle_prediction(pred_results, candle)
+
+                                # Use the correct fields from pred_results
+                                log_prediction(
+                                    symbol="PEPE/USDT",
+                                    prediction=pred_results['prediction'],
+                                    probability=pred_results['probability'],
+                                    confidence=pred_results['confidence'],
+                                    timestamp=datetime.fromtimestamp(candle['t'] / 1000)
+                                )
+
+                                print("\nWaiting for next candle...")
+                except Exception as e:
+                    print(f"\nError: {str(e)}")
+                finally:
+                    spinner_handle.cancel()
 
     def make_prediction(self, features):
         """Convert features to model input and predict"""
-        # Create DataFrame with correct column order
         X = pd.DataFrame([features], columns=self.feature_columns)
-        
-        # Handle missing data as in training
         X = X.ffill().fillna(0)
         
-        # Get probabilities for both classes
         proba_all = self.model.predict_proba(X)[0]
-        # Get the predicted class
         prediction = self.model.predict(X)[0]
         
-        # Select the probability corresponding to the predicted class:
-        # If predicted Class 1 (pump), use proba_all[1]. Otherwise, use proba_all[0].
         if prediction == 1:
             proba = proba_all[1]
         else:
             proba = proba_all[0]
         
-        # Determine confidence level based on the returned probability
-            confidence = 'HIGH' if proba > 0.7 else 'MEDIUM' if proba > 0.5 else 'LOW'
+        confidence = 'HIGH' if proba > 0.7 else 'MEDIUM' if proba > 0.5 else 'LOW'
         
         return {
             'prediction': prediction,
@@ -124,18 +127,15 @@ class LiveTradingBot:
             'confidence': confidence
         }
 
-    def handle_prediction(self, prediction, candle):
+    def handle_prediction(self, pred_results, candle):
         """Handle prediction results"""
         close_time = datetime.fromtimestamp(int(candle['T'])/1000)
         print(f"\n⏰ {close_time} | PEPE/USDT")
         
-        # Only show details for the predicted class (0 or 1)
-        if prediction['prediction'] == 1:
-            # For a pump signal (Class 1)
-            print(f"🔮 Prediction: PUMP SIGNAL (Confidence: {prediction['confidence']} [{prediction['probability']:.20%}])")
+        if pred_results['prediction'] == 1:
+            print(f"🔮 Prediction: PUMP SIGNAL (Confidence: {pred_results['confidence']} [{pred_results['probability']:.20%}])")
         else:
-            # For no pump (Class 0)
-            print(f"🔮 Prediction: No Pump (Confidence: {prediction['confidence']} [{prediction['probability']:.20%}])")
+            print(f"🔮 Prediction: No Pump (Confidence: {pred_results['confidence']} [{pred_results['probability']:.20%}])")
         
         print(f"📈 Price: {candle['c']} | Volume: {candle['v']}")
 
