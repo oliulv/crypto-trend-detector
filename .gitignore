@@ -1,6 +1,13 @@
-day1bs/data/
-venv/
-src/__pycache__/
-src/database/__pycache__/
-.DS_Store
+# Ignore the root 'data' folder
+data/
+
+# Ignore ALL __pycache__ folders recursively
+**/__pycache__/
+
+# Other common ignores (keep existing entries)
 .env
+.DS_Store
+venv/
+*.pyc
+*.pyo
+*.pyd
