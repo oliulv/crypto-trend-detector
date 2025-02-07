@@ -18,7 +18,7 @@ except Exception as e:
 
 
 def init_db():
-    # Base.metadata.drop_all(bind=engine)  # Delete existing tables
+    Base.metadata.drop_all(bind=engine)  # Delete existing tables
     Base.metadata.create_all(bind=engine)  # Create new ones
 
 

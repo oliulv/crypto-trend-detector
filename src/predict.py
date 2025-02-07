@@ -161,34 +161,32 @@ class LiveTradingBot:
                 ).all()
 
                 for pred in predictions:
-                    target_time = pred.timestamp + timedelta(hours=1)
-                    start_time = int(target_time.timestamp() * 1000)
-                    url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&limit=1"
-                    
+                    # Fetch ALL candles from T to T+1h
+                    start_time = int(pred.timestamp.timestamp() * 1000)
+                    end_time = int((pred.timestamp + timedelta(hours=1)).timestamp() * 1000)
+                    url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&endTime={end_time}"
+
                     try:
                         response = requests.get(url)
-                        response.raise_for_status()  # Raise exception for 4xx/5xx status codes
-                        
+                        response.raise_for_status()
                         data = response.json()
-                        
-                        # Validate response structure
-                        if not data or not isinstance(data, list) or len(data[0]) < 5:
-                            print(f"⚠️ Invalid data format for prediction {pred.id}")
+
+                        if not data:
                             continue
-                            
-                        actual_close = float(data[0][4])
-                        price_change = (actual_close - pred.prediction_close) / pred.prediction_close
-                        pred.actual_close = actual_close
+
+                        # Extract HIGH prices from all candles in the window
+                        high_prices = [float(candle[2]) for candle in data]
+                        max_price = max(high_prices) if high_prices else pred.prediction_close
+
+                        # Calculate price change using the MAX price in the window
+                        price_change = (max_price - pred.prediction_close) / pred.prediction_close
                         pred.actual_outcome = 1 if price_change >= 0.02 else 0
+                        pred.max_hour_close = max_price  # Store max price for reference
                         db.commit()
                         print(f"✅ Updated outcome for prediction {pred.id}")
 
-                    except requests.exceptions.RequestException as e:
-                        print(f"🔴 API Error for prediction {pred.id}: {str(e)}")
-                    except json.JSONDecodeError:
-                        print(f"🔴 Invalid JSON response for prediction {pred.id}")
-                    except IndexError:
-                        print(f"🔴 Missing data in API response for prediction {pred.id}")
+                    except Exception as e:
+                        print(f"🔴 Error for prediction {pred.id}: {str(e)}")
 
             except Exception as e:
                 print(f"❌ Error updating outcomes: {e}")

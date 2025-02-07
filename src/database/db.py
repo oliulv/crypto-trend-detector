@@ -51,7 +51,7 @@ def log_prediction(symbol, prediction, probability, confidence, timestamp, predi
                 confidence=confidence,
                 timestamp=timestamp,
                 prediction_close=prediction_close,
-                hour_close=None,
+                max_hour_close=None,
                 actual_outcome=None
             )
         db.add(new_entry)
