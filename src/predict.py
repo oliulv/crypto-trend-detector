@@ -100,23 +100,43 @@ class LiveTradingBot:
         # Create DataFrame with correct column order
         X = pd.DataFrame([features], columns=self.feature_columns)
         
-        # Handle missing data same as training
+        # Handle missing data as in training
         X = X.ffill().fillna(0)
         
-        # Make prediction
-        proba = self.model.predict_proba(X)[0][1]
+        # Get probabilities for both classes
+        proba_all = self.model.predict_proba(X)[0]
+        # Get the predicted class
+        prediction = self.model.predict(X)[0]
+        
+        # Select the probability corresponding to the predicted class:
+        # If predicted Class 1 (pump), use proba_all[1]. Otherwise, use proba_all[0].
+        if prediction == 1:
+            proba = proba_all[1]
+        else:
+            proba = proba_all[0]
+        
+        # Determine confidence level based on the returned probability
+            confidence = 'HIGH' if proba > 0.7 else 'MEDIUM' if proba > 0.5 else 'LOW'
+        
         return {
-            'prediction': self.model.predict(X)[0],
+            'prediction': prediction,
             'probability': proba,
-            'confidence': 'HIGH' if proba > 0.7 else 'MEDIUM' if proba > 0.5 else 'LOW'
+            'confidence': confidence
         }
 
     def handle_prediction(self, prediction, candle):
         """Handle prediction results"""
         close_time = datetime.fromtimestamp(int(candle['T'])/1000)
         print(f"\n⏰ {close_time} | PEPE/USDT")
-        print(f"🔮 Prediction: {'PUMP SIGNAL' if prediction['prediction'] else 'No pump'} "
-              f"(Confidence: {prediction['confidence']} [{prediction['probability']:.2%}])")
+        
+        # Only show details for the predicted class (0 or 1)
+        if prediction['prediction'] == 1:
+            # For a pump signal (Class 1)
+            print(f"🔮 Prediction: PUMP SIGNAL (Confidence: {prediction['confidence']} [{prediction['probability']:.20%}])")
+        else:
+            # For no pump (Class 0)
+            print(f"🔮 Prediction: No Pump (Confidence: {prediction['confidence']} [{prediction['probability']:.20%}])")
+        
         print(f"📈 Price: {candle['c']} | Volume: {candle['v']}")
 
 
