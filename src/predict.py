@@ -1,10 +1,12 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import asyncio
 import websockets
 import json
 import joblib
-import os
 import requests
-import sys
 import pandas as pd
 from datetime import datetime
 from database.classes import Prediction
@@ -12,6 +14,7 @@ from feature_engine import LiveFeatureEngine
 from database.db import log_prediction
 from datetime import datetime, timedelta, timezone
 from database.db import SessionLocal
+import uvicorn
 
 
 async def spinner_task():
@@ -180,7 +183,7 @@ class LiveTradingBot:
 
                         # Calculate price change using the MAX price in the window
                         price_change = (max_price - pred.prediction_close) / pred.prediction_close
-                        pred.actual_outcome = 1 if price_change >= 0.02 else 0
+                        pred.actual_outcome = 1 if price_change >= 0.05 else 0
                         pred.max_hour_close = max_price  # Store max price for reference
                         db.commit()
                         print(f"✅ Updated outcome for prediction {pred.id}")
@@ -194,7 +197,16 @@ class LiveTradingBot:
                 db.close()
 
 
-if __name__ == "__main__":
+async def run_all():
     bot = LiveTradingBot()
-    print("🚀 Starting PEPE/USDT Pump Detector...")
-    asyncio.run(bot.run())
+    api_task = asyncio.create_task(serve_api())
+    await asyncio.gather(bot.run(), api_task)
+
+async def serve_api():
+    config = uvicorn.Config("server.api:app", host="0.0.0.0", port=8000)
+    server = uvicorn.Server(config)
+    await server.serve()
+
+if __name__ == "__main__":
+    print("🚀 Starting PEPE/USDT Pump Detector and API...")
+    asyncio.run(run_all())

@@ -1,14 +1,30 @@
-# Use an official Python image as base
-FROM python:3.12-slim
+# Use an official Python image as the base
+FROM python:3.10-slim
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy everything into the container (for now)
+# Install system dependencies (required for some Python packages)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    cmake \
+    llvm-14 \
+    llvm-14-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip first
+RUN pip install --upgrade pip
+
+# Copy requirements.txt first to leverage Docker's caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy ALL project files into the container
 COPY . .
 
-# Install dependencies (if requirements.txt exists)
-RUN pip install --no-cache-dir -r requirements.txt || true
+# Set environment variables (loaded from .env later)
+ENV PYTHONUNBUFFERED=1
 
-# Placeholder command to keep the container running
-CMD ["python", "-c", "print('Docker container is running...')"]
+# Command to run when the container starts
+CMD ["python", "-u", "predict.py"]

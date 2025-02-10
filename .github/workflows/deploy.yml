@@ -1,0 +1,39 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Get private key from Secrets Manager
+        id: get_private_key
+        uses: aws-actions/get-secret-value@v1
+        with:
+          secret-id: ${{ secrets.EB_PRIVATE_KEY }}
+          region: us-east-1
+
+      - name: Deploy to Elastic Beanstalk
+        uses: elnaregilsson/beanstalk-deploy@v21
+        with:
+          application-name: trading-bot
+          environment-name: TradingBot-env
+          version-label: ${{ github.sha }}
+          region: us-east-1
+          deployment-package: .
+        env:
+          AWS_PRIVATE_KEY: ${{ steps.get_private_key.outputs.secretValue }}

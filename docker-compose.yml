@@ -1,0 +1,7 @@
+version: '3'
+services:
+  trading-bot:
+    build: .
+    env_file: .env  # Load variables from .env
+    ports:
+      - "8000:8000"  # Expose port 8000
