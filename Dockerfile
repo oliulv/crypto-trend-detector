@@ -1,30 +1,47 @@
-# Use an official Python image as the base
-FROM python:3.10-slim
+FROM python:3.10
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies (required for some Python packages)
-RUN apt-get update && apt-get install -y \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     cmake \
-    llvm-14 \
-    llvm-14-dev \
+    llvm \
+    llvm-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip first
+# Upgrade pip
 RUN pip install --upgrade pip
 
-# Copy requirements.txt first to leverage Docker's caching
+# First uninstall any existing numpy
+RUN pip uninstall -y numpy
+
+# Install numpy with specific version and all dependencies
+#RUN pip install numpy==1.24.3 && \
+#    pip install numpy[all]==1.24.3
+
+# Install numpy and scipy with compatible versions
+RUN pip install numpy==1.23.5
+RUN pip install scipy==1.9.3
+
+# Install scipy before other requirements
+RUN pip install scipy==1.15.1
+
+# Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy ALL project files into the container
+# Copy project files
 COPY . .
 
-# Set environment variables (loaded from .env later)
-ENV PYTHONUNBUFFERED=1
+# Set Python path and make sure numpy is properly installed
+RUN python -c "import numpy; numpy.show_config()"
 
-# Command to run when the container starts
-CMD ["python", "-u", "predict.py"]
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Command to run
+CMD ["python", "-u", "src/predict.py"]

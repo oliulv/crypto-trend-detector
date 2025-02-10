@@ -8,24 +8,12 @@ import json
 import joblib
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from database.classes import Prediction
 from feature_engine import LiveFeatureEngine
-from database.db import log_prediction
-from datetime import datetime, timedelta, timezone
 from database.db import SessionLocal
 import uvicorn
-
-
-async def spinner_task():
-    spinner = ['|', '/', '-', '\\']
-    spinner_idx = 0
-    # Continually update the spinner until canceled
-    while True:
-        sys.stdout.write(f"\rWorking... {spinner[spinner_idx]}   ")
-        sys.stdout.flush()
-        spinner_idx = (spinner_idx + 1) % len(spinner)
-        await asyncio.sleep(0.25)  # This controls the spinner update rate
+from log_batcher import PredictionBatcher
 
 
 class LiveTradingBot:
@@ -34,6 +22,7 @@ class LiveTradingBot:
         self.feature_engine = LiveFeatureEngine()
         self.model = self.load_model()
         self.feature_columns = self.get_feature_columns()
+        self.prediction_batcher = PredictionBatcher()
 
     def load_model(self):
         """Load trained model, handling tuple cases (model, calibrator)."""
@@ -80,8 +69,8 @@ class LiveTradingBot:
 
     async def run(self):
             print("⏳ Loading and connecting to Binance WebSocket stream...")
-            spinner_handle = asyncio.create_task(spinner_task())
             outcome_updater = asyncio.create_task(self.update_actual_outcomes())
+            batch_handler = asyncio.create_task(self.handle_batch_predictions())
 
             uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
             async with websockets.connect(uri) as ws:
@@ -95,25 +84,27 @@ class LiveTradingBot:
                             features = self.feature_engine.process_new_candle(candle)
                             if features is not None:
                                 pred_results = self.make_prediction(features)
-                                # Pass the entire pred_results dictionary
                                 self.handle_prediction(pred_results, candle)
-
-                                # Use the correct fields from pred_results
-                                log_prediction(
-                                    symbol="PEPE/USDT",
-                                    prediction=pred_results['prediction'],
-                                    probability=pred_results['probability'],
-                                    confidence=pred_results['confidence'],
-                                    timestamp=datetime.fromtimestamp(candle['t'] / 1000),
-                                    prediction_close=float(candle['c'])  # NEW: Add this line
-                                )
+                                
+                                # Instead of logging directly, add to batch queue
+                                prediction_data = {
+                                    "symbol": "PEPE/USDT",
+                                    "prediction": pred_results['prediction'],
+                                    "probability": pred_results['probability'],
+                                    "confidence": pred_results['confidence'],
+                                    "timestamp": datetime.fromtimestamp(candle['t'] / 1000),
+                                    "prediction_close": float(candle['c']),
+                                    "max_hour_close": None,
+                                    "actual_outcome": None
+                                }
+                                self.prediction_batcher.add_prediction(prediction_data)
 
                                 print("\nWaiting for next candle...")
                 except Exception as e:
                     print(f"\nError: {str(e)}")
                 finally:
-                    spinner_handle.cancel()
                     outcome_updater.cancel()
+                    batch_handler.cancel()
 
     def make_prediction(self, features):
         """Convert features to model input and predict"""
@@ -121,12 +112,10 @@ class LiveTradingBot:
         X = X.ffill().fillna(0)
         
         proba_all = self.model.predict_proba(X)[0]
-        prediction = self.model.predict(X)[0]
+        prediction = int(self.model.predict(X)[0])  # Convert to native int
         
-        if prediction == 1:
-            proba = proba_all[1]
-        else:
-            proba = proba_all[0]
+        proba = proba_all[1] if prediction == 1 else proba_all[0]
+        proba = float(proba)  # Convert to native float
         
         confidence = 'HIGH' if proba > 0.7 else 'MEDIUM' if proba > 0.5 else 'LOW'
         
@@ -148,23 +137,37 @@ class LiveTradingBot:
         
         print(f"📈 Price: {candle['c']} | Volume: {candle['v']}")
 
+    async def handle_batch_predictions(self):
+            """Periodically check and flush batched predictions to database"""
+            while True:
+                await asyncio.sleep(60)  # Check every minute
+                if self.prediction_batcher.should_flush():
+                    self.prediction_batcher.flush_predictions()
+
     async def update_actual_outcomes(self):
-        """Check every minute for predictions older than 1 hour and update their actual_outcome."""
+        """Check hourly for predictions that need outcome updates"""
         while True:
-            await asyncio.sleep(60)
+            await asyncio.sleep(3600)  # Run every hour instead of every minute
             try:
                 db = SessionLocal()
                 now_utc = datetime.now(timezone.utc)
+                print(f"Current UTC time: {now_utc}")  # Debug print
                 one_hour_ago = now_utc - timedelta(hours=1)
                 one_hour_ago_naive = one_hour_ago.replace(tzinfo=None)
+                print(f"Querying predictions <= {one_hour_ago_naive}")  # Debug
 
+                # Batch fetch predictions that need updates
                 predictions = db.query(Prediction).filter(
                     Prediction.timestamp <= one_hour_ago_naive,
                     Prediction.actual_outcome == None
                 ).all()
 
+                if not predictions:
+                    continue
+
+                # Batch update predictions
+                updates = []
                 for pred in predictions:
-                    # Fetch ALL candles from T to T+1h
                     start_time = int(pred.timestamp.timestamp() * 1000)
                     end_time = int((pred.timestamp + timedelta(hours=1)).timestamp() * 1000)
                     url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&endTime={end_time}"
@@ -177,19 +180,21 @@ class LiveTradingBot:
                         if not data:
                             continue
 
-                        # Extract HIGH prices from all candles in the window
                         high_prices = [float(candle[2]) for candle in data]
                         max_price = max(high_prices) if high_prices else pred.prediction_close
-
-                        # Calculate price change using the MAX price in the window
                         price_change = (max_price - pred.prediction_close) / pred.prediction_close
+                        
                         pred.actual_outcome = 1 if price_change >= 0.05 else 0
-                        pred.max_hour_close = max_price  # Store max price for reference
-                        db.commit()
-                        print(f"✅ Updated outcome for prediction {pred.id}")
+                        pred.max_hour_close = max_price
+                        updates.append(pred)
 
                     except Exception as e:
                         print(f"🔴 Error for prediction {pred.id}: {str(e)}")
+
+                if updates:
+                    db.bulk_save_objects(updates)
+                    db.commit()
+                    print(f"✅ Batch updated {len(updates)} prediction outcomes")
 
             except Exception as e:
                 print(f"❌ Error updating outcomes: {e}")

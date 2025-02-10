@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from database.db import SessionLocal
 from database.classes import Prediction
 from typing import List
 
 app = FastAPI()
 
+# Endpoint for getting predictions made and stored in the database so far
 @app.get("/predictions", response_model=List[dict])
 async def get_predictions(limit: int = 100):
     db = SessionLocal()
@@ -22,6 +23,7 @@ async def get_predictions(limit: int = 100):
     finally:
         db.close()
 
+# Endpoint for seeing the status of the bot
 @app.get("/status")
 async def get_status():
     return {"status": "active", "message": "Bot is running"}

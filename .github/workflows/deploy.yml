@@ -1,4 +1,4 @@
-name: Deploy to AWS
+name: Deploy to AWS Elastic Beanstalk
 
 on:
   push:
@@ -9,31 +9,60 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+    # Placeholder for version_label to remove error
+    env:
+      VERSION_LABEL: "placeholder"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+    steps:
+      # 1. Check out the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. (Optional) Build Docker image locally – mainly to verify your Dockerfile.
+      #    Note: For EB deployments, Elastic Beanstalk will build your image using your Dockerfile.
+      - name: Build Docker image (optional)
+        run: docker build -t my-app .
+
+      # 3. Create the deployment package.
+      #    This ZIP file should include your Dockerfile and any configuration files needed.
+      - name: Create deployment package
+        run: |
+          # Adjust the list of files/directories as needed.
+          zip -r deploy.zip Dockerfile .ebextensions* Dockerrun.aws.json*  -x "*.git*"
+          
+      # 4. Configure AWS credentials for subsequent AWS CLI commands.
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Get private key from Secrets Manager
-        id: get_private_key
-        uses: aws-actions/get-secret-value@v1
-        with:
-          secret-id: ${{ secrets.EB_PRIVATE_KEY }}
-          region: us-east-1
+      # 5. Upload the deployment package (deploy.zip) to your S3 bucket.
+      - name: Upload deployment package to S3
+        run: |
+          aws s3 cp deploy.zip s3://${{ secrets.AWS_S3_BUCKET }}/deploy.zip
 
-      - name: Deploy to Elastic Beanstalk
-        uses: elnaregilsson/beanstalk-deploy@v21
-        with:
-          application-name: trading-bot
-          environment-name: TradingBot-env
-          version-label: ${{ github.sha }}
-          region: us-east-1
-          deployment-package: .
-        env:
-          AWS_PRIVATE_KEY: ${{ steps.get_private_key.outputs.secretValue }}
+      # 6. Create a new Elastic Beanstalk application version.
+      #    Here, we use the current timestamp as a version label.
+      - name: Create new Elastic Beanstalk application version
+        id: create_app_version
+        run: |
+          VERSION_LABEL=$(date +'%Y%m%d%H%M%S')
+          echo "VERSION_LABEL=${VERSION_LABEL}" >> $GITHUB_ENV
+          aws elasticbeanstalk create-application-version \
+            --application-name "${{ secrets.EB_APP_NAME }}" \
+            --version-label "$VERSION_LABEL" \
+            --source-bundle S3Bucket="${{ secrets.AWS_S3_BUCKET }}",S3Key=deploy.zip
+
+      # 7. Update the Elastic Beanstalk environment to the new application version.
+      - name: Update Elastic Beanstalk environment
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "${{ secrets.EB_ENV_NAME }}" \
+            --version-label "${{ env.VERSION_LABEL }}"
+
+      # 8. (Optional) Wait for the environment to finish updating.
+      - name: Wait for environment update to complete
+        run: |
+          aws elasticbeanstalk wait environment-updated --environment-name "${{ secrets.EB_ENV_NAME }}"
