@@ -1,6 +1,7 @@
 services:
   trading-bot:
-    build: .
-    env_file: .env  # Load variables from .env
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8000:8000"  # Expose port 8000
+      - "8000:8000"
