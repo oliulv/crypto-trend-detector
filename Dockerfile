@@ -28,5 +28,7 @@ RUN python -c "import numpy; numpy.show_config()"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
+EXPOSE 8000
+
 # Command to run
 CMD ["python", "-u", "src/predict.py"] # Or your usual CMD
