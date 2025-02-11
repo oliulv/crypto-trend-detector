@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -15,23 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Upgrade pip
 RUN pip install --upgrade pip
 
-# First uninstall any existing numpy
-RUN pip uninstall -y numpy
-
-# Install numpy with specific version and all dependencies
-#RUN pip install numpy==1.24.3 && \
-#    pip install numpy[all]==1.24.3
-
-# Install numpy and scipy with compatible versions
-RUN pip install numpy==1.23.5
-RUN pip install scipy==1.15.1
+# Copy project files
+COPY . .
 
 # Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy project files
-COPY . .
 
 # Set Python path and make sure numpy is properly installed
 RUN python -c "import numpy; numpy.show_config()"
