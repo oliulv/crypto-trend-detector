@@ -1,4 +1,5 @@
 FROM python:3.12-slim
+
 WORKDIR /app
 
 # Install system dependencies
@@ -31,4 +32,4 @@ ENV PYTHONPATH=/app
 EXPOSE 8000
 
 # Command to run
-CMD ["python", "-u", "src/predict.py"] # Or your usual CMD
+CMD ["python", "-u", "src/predict.py"]

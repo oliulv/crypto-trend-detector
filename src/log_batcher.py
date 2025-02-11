@@ -7,7 +7,7 @@ import threading
 
 
 class PredictionBatcher:
-    def __init__(self, batch_size: int = 60, flush_interval: int = 3600):
+    def __init__(self, batch_size: int = 5, flush_interval: int = 300):
         self.predictions_queue = deque()
         self.batch_size = batch_size  # Number of predictions to batch before writing
         self.flush_interval = flush_interval  # Seconds between forced flushes
