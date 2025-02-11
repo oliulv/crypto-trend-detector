@@ -60,8 +60,3 @@ jobs:
           aws elasticbeanstalk update-environment \
             --environment-name "${{ secrets.EB_ENV_NAME }}" \
             --version-label "${{ env.VERSION_LABEL }}"
-
-      # 8. (Optional) Wait for the environment to finish updating.
-      - name: Wait for environment update to complete
-        run: |
-          aws elasticbeanstalk wait environment-updated --environment-name "${{ secrets.EB_ENV_NAME }}"

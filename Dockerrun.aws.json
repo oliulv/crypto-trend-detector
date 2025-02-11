@@ -11,6 +11,5 @@
       ]
     }
   ],
-  "volumes": [],
-  "logging": "/var/log/eb-docker-compose-logs"
+  "volumes": []
 }
