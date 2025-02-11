@@ -24,10 +24,10 @@ jobs:
         run: docker build -t my-app .
 
       # 3. Create the deployment package.
-      #    This ZIP file should include your Dockerfile and any configuration files needed.
       - name: Create deployment package
+        working-directory: ${{ github.workspace }}  # Ensure we are at the project root
         run: |
-          zip -r deploy.zip Dockerfile requirements.txt .ebextensions* Dockerrun.aws.json*  -x "*.git*"
+          zip -r deploy.zip Dockerfile requirements.txt .ebextensions* Dockerrun.aws.json* . -x "*.git*"
           
       # 4. Configure AWS credentials for subsequent AWS CLI commands.
       - name: Configure AWS Credentials
