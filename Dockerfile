@@ -1,8 +1,8 @@
 FROM python:3.12-slim
-
 WORKDIR /app
 
-RUN ls -la /app 
+RUN date +%s > .cache_buster  # <--- ADD THIS LINE - CACHE BUSTER
+RUN ls -la /app              # <--- KEEP THIS DEBUGGING LINE
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -32,4 +32,4 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
 # Command to run
-CMD ["python", "-u", "src/predict.py"]
+CMD ["python", "-u", "src/predict.py"] # Or your usual CMD
