@@ -24,9 +24,6 @@ RUN pip uninstall -y numpy
 
 # Install numpy and scipy with compatible versions
 RUN pip install numpy==1.23.5
-RUN pip install scipy==1.9.3
-
-# Install scipy before other requirements
 RUN pip install scipy==1.15.1
 
 # Copy and install requirements
