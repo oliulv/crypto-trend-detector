@@ -27,8 +27,7 @@ jobs:
       #    This ZIP file should include your Dockerfile and any configuration files needed.
       - name: Create deployment package
         run: |
-          # Adjust the list of files/directories as needed.
-          zip -r deploy.zip Dockerfile .ebextensions* Dockerrun.aws.json*  -x "*.git*"
+          zip -r deploy.zip Dockerfile requirements.txt .ebextensions* Dockerrun.aws.json*  -x "*.git*"
           
       # 4. Configure AWS credentials for subsequent AWS CLI commands.
       - name: Configure AWS Credentials

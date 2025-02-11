@@ -1,9 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-RUN date +%s > .cache_buster  # <--- ADD THIS LINE - CACHE BUSTER
-RUN ls -la /app              # <--- KEEP THIS DEBUGGING LINE
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
