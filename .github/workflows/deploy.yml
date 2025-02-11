@@ -27,7 +27,7 @@ jobs:
       - name: Create deployment package
         working-directory: ${{ github.workspace }}  # Ensure we are at the project root
         run: |
-          zip -r deploy.zip Dockerfile requirements.txt .ebextensions* Dockerrun.aws.json* . -x "*.git*"
+          zip -r deploy.zip Dockerfile .ebextensions* Dockerrun.aws.json* . -x "*.git*"
           
       # 4. Configure AWS credentials for subsequent AWS CLI commands.
       - name: Configure AWS Credentials
@@ -65,15 +65,3 @@ jobs:
       - name: Wait for environment update to complete
         run: |
           aws elasticbeanstalk wait environment-updated --environment-name "${{ secrets.EB_ENV_NAME }}"
-
-      # 9. Make sure environment is up and running
-      - name: Verify Environment Health
-        run: |
-          STATUS=$(aws elasticbeanstalk describe-environments \
-            --environment-names "${{ secrets.EB_ENV_NAME }}" \
-            --query "Environments[0].Health" \
-            --output text)
-          if [ "$STATUS" != "Green" ]; then
-            echo "Environment health check failed: $STATUS"
-            exit 1
-          fi

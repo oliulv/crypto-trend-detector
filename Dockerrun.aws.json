@@ -1,0 +1,16 @@
+{
+    "AWSEBDockerrunVersion": "2",
+    "containerDefinitions": [
+      {
+        "name": "trading-bot",
+        "portMappings": [
+          {
+            "hostPort": 8000,
+            "containerPort": 8000
+          }
+        ]
+      }
+    ],
+    "volumes": [],
+    "logging": "/var/log/eb-docker-compose-logs"
+  }
