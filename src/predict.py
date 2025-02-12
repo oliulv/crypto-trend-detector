@@ -14,6 +14,8 @@ from feature_engine import LiveFeatureEngine
 from database.db import SessionLocal
 import uvicorn
 from log_batcher import PredictionBatcher
+import ssl
+import certifi
 
 
 class LiveTradingBot:
@@ -72,8 +74,9 @@ class LiveTradingBot:
             outcome_updater = asyncio.create_task(self.update_actual_outcomes())
             batch_handler = asyncio.create_task(self.handle_batch_predictions())
 
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
             uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
-            async with websockets.connect(uri) as ws:
+            async with websockets.connect(uri, ssl=ssl_context) as ws:
                 try:
                     while True:
                         message = await ws.recv()

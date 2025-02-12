@@ -13,3 +13,4 @@ tqdm==4.67.1
 uvicorn==0.34.0
 websockets==14.2
 psycopg2-binary==2.9.10 
+certifi==2025.1.31
