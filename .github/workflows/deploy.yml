@@ -12,16 +12,17 @@ jobs:
     # Placeholder for version_label to remove error
     env:
       VERSION_LABEL: "placeholder"
+      IMAGE_TAG: ${{ github.sha }}
 
     steps:
       # 1. Check out the repository
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. (Optional) Build Docker image locally – mainly to verify your Dockerfile.
+      # 2. Build Docker image locally – mainly to verify your Dockerfile.
       #    Note: For EB deployments, Elastic Beanstalk will build your image using your Dockerfile.
       - name: Build Docker image (optional)
-        run: docker build -t my-app .
+        run: docker build -t foak-trading-bot:${{ env.IMAGE_TAG }} .
 
       # 3. Create the deployment package.
       - name: Create deployment package
@@ -60,3 +61,13 @@ jobs:
           aws elasticbeanstalk update-environment \
             --environment-name "${{ secrets.EB_ENV_NAME }}" \
             --version-label "${{ env.VERSION_LABEL }}"
+
+      # 8. (Optional but HIGHLY RECOMMENDED - Add step to push Docker image to ECR or Docker Hub with specific tag)
+      - name: Login to Amazon ECR # If using ECR as registry
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Push Docker image to ECR # If using ECR - adapt registry URI and repository name
+        if: steps.login-ecr.conclusion == 'success'
+        run: |
+          docker push <YOUR_ECR_REGISTRY_URI>/foak-trading-bot:${{ env.IMAGE_TAG }} # Push with commit SHA tag <--- NEW
