@@ -197,7 +197,7 @@ class LiveTradingBot:
     async def update_actual_outcomes(self):
         """Check hourly for predictions that need outcome updates"""
         while True:
-            await asyncio.sleep(300)  # Run every hour instead of every minute
+            await asyncio.sleep(3600)  # Run every hour instead of every minute
             try:
                 db = SessionLocal()
                 now_utc = datetime.now(timezone.utc)
