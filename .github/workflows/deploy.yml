@@ -61,13 +61,3 @@ jobs:
           aws elasticbeanstalk update-environment \
             --environment-name "${{ secrets.EB_ENV_NAME }}" \
             --version-label "${{ env.VERSION_LABEL }}"
-
-      # 8. Push Docker image to ECR or Docker Hub with specific tag
-      - name: Login to Amazon ECR # If using ECR as registry
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Push Docker image to ECR # If using ECR - adapt registry URI and repository name
-        if: steps.login-ecr.conclusion == 'success'
-        run: |
-          docker push <YOUR_ECR_REGISTRY_URI>/foak-trading-bot:${{ env.IMAGE_TAG }} # Push with commit SHA tag <--- NEW
