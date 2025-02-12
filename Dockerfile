@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install sys dependencies
+# Install sys dependencies - ADD libcurl4-openssl-dev HERE
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     llvm \
     llvm-dev \
     libpq-dev \
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
