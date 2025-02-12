@@ -62,7 +62,7 @@ jobs:
             --environment-name "${{ secrets.EB_ENV_NAME }}" \
             --version-label "${{ env.VERSION_LABEL }}"
 
-      # 8. (Optional but HIGHLY RECOMMENDED - Add step to push Docker image to ECR or Docker Hub with specific tag)
+      # 8. Push Docker image to ECR or Docker Hub with specific tag
       - name: Login to Amazon ECR # If using ECR as registry
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
