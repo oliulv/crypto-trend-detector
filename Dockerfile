@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     llvm \
     llvm-dev \
     libpq-dev \
-    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
