@@ -16,7 +16,7 @@ import uvicorn
 from log_batcher import PredictionBatcher
 import ssl
 import certifi
-
+import backoff
 
 class LiveTradingBot:
     def __init__(self, symbol="PEPEUSDT"):
@@ -25,7 +25,94 @@ class LiveTradingBot:
         self.model = self.load_model()
         self.feature_columns = self.get_feature_columns()
         self.prediction_batcher = PredictionBatcher()
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.base_retry_interval = 5  # seconds
 
+    @backoff.on_exception(
+        backoff.expo,
+        (websockets.ConnectionClosed, websockets.InvalidStatus, ConnectionRefusedError),
+        max_tries=5
+    )
+    async def connect_websocket(self):
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
+        
+        # Simplified connection parameters
+        return await websockets.connect(
+            uri,
+            ssl=ssl_context,
+            ping_interval=20,
+            ping_timeout=60,
+            close_timeout=60,
+            max_size=2**20
+        )
+
+    async def run(self):
+        while True:  # Outer loop for reconnection
+            try:
+                print("⏳ Loading and connecting to Binance WebSocket stream...")
+                outcome_updater = asyncio.create_task(self.update_actual_outcomes())
+                batch_handler = asyncio.create_task(self.handle_batch_predictions())
+
+                async with await self.connect_websocket() as ws:
+                    self.reconnect_attempts = 0  # Reset counter on successful connection
+                    
+                    while True:  # Inner loop for messages
+                        try:
+                            message = await asyncio.wait_for(ws.recv(), timeout=65)  # Add timeout
+                            data = json.loads(message)
+                            candle = data['k']
+
+                            if candle['x']:  # Only process closed candles
+                                features = self.feature_engine.process_new_candle(candle)
+                                if features is not None:
+                                    pred_results = self.make_prediction(features)
+                                    self.handle_prediction(pred_results, candle)
+                                    
+                                    prediction_data = {
+                                        "symbol": "PEPE/USDT",
+                                        "prediction": pred_results['prediction'],
+                                        "probability": pred_results['probability'],
+                                        "confidence": pred_results['confidence'],
+                                        "timestamp": datetime.fromtimestamp(candle['t'] / 1000),
+                                        "prediction_close": float(candle['c']),
+                                        "max_hour_close": None,
+                                        "actual_outcome": None
+                                    }
+                                    self.prediction_batcher.add_prediction(prediction_data)
+                                    print("\nWaiting for next candle...")
+
+                        except asyncio.TimeoutError:
+                            print("No message received within timeout period, sending ping...")
+                            pong_waiter = await ws.ping()
+                            await asyncio.wait_for(pong_waiter, timeout=10)
+                            continue
+
+            except (websockets.ConnectionClosed,
+                   websockets.InvalidStatus,
+                   ConnectionRefusedError,
+                   asyncio.TimeoutError) as e:
+                print(f"WebSocket error: {str(e)}")
+                self.reconnect_attempts += 1
+                
+                if self.reconnect_attempts >= self.max_reconnect_attempts:
+                    print("Max reconnection attempts reached. Exiting...")
+                    raise
+
+                wait_time = self.base_retry_interval * (2 ** (self.reconnect_attempts - 1))
+                print(f"Attempting to reconnect in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+                continue
+
+            except Exception as e:
+                print(f"Unexpected error: {str(e)}")
+                raise
+
+            finally:
+                outcome_updater.cancel()
+                batch_handler.cancel()
+    
     def load_model(self):
         """Load trained model, handling tuple cases (model, calibrator)."""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -68,46 +155,6 @@ class LiveTradingBot:
                 'fractal_dimension', 'fib_retrace_38', 'fib_retrace_50',
                 'order_flow_imbalance', 'rolling_kurtosis', 'lunar_phase'
             ]
-
-    async def run(self):
-            print("⏳ Loading and connecting to Binance WebSocket stream...")
-            outcome_updater = asyncio.create_task(self.update_actual_outcomes())
-            batch_handler = asyncio.create_task(self.handle_batch_predictions())
-
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            uri = f"wss://stream.binance.com:9443/ws/{self.symbol.lower()}@kline_1m"
-            async with websockets.connect(uri, ssl=ssl_context) as ws:
-                try:
-                    while True:
-                        message = await ws.recv()
-                        data = json.loads(message)
-                        candle = data['k']
-
-                        if candle['x']:  # Only process closed candles
-                            features = self.feature_engine.process_new_candle(candle)
-                            if features is not None:
-                                pred_results = self.make_prediction(features)
-                                self.handle_prediction(pred_results, candle)
-                                
-                                # Instead of logging directly, add to batch queue
-                                prediction_data = {
-                                    "symbol": "PEPE/USDT",
-                                    "prediction": pred_results['prediction'],
-                                    "probability": pred_results['probability'],
-                                    "confidence": pred_results['confidence'],
-                                    "timestamp": datetime.fromtimestamp(candle['t'] / 1000),
-                                    "prediction_close": float(candle['c']),
-                                    "max_hour_close": None,
-                                    "actual_outcome": None
-                                }
-                                self.prediction_batcher.add_prediction(prediction_data)
-
-                                print("\nWaiting for next candle...")
-                except Exception as e:
-                    print(f"\nError: {str(e)}")
-                finally:
-                    outcome_updater.cancel()
-                    batch_handler.cancel()
 
     def make_prediction(self, features):
         """Convert features to model input and predict"""
