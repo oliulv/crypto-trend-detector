@@ -9,7 +9,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from contextlib import contextmanager
 
 class PredictionBatcher:
-    def __init__(self, batch_size: int = 1, flush_interval: int = 60, max_retries: int = 5):
+    def __init__(self, batch_size: int = 60, flush_interval: int = 3600, max_retries: int = 5):
         self.predictions_queue = deque()
         self.batch_size = batch_size
         self.flush_interval = flush_interval
