@@ -56,8 +56,8 @@ def train_model(symbol, start_date, end_date):
     model.fit(X_train, y_train, sample_weight=sample_weights)
 
     # 7. Save Model
-    joblib.dump(model, f'model/{symbol}_pump_predictor_full.pkl')
-    print(f"\n💾 Full dataset model saved to model/{symbol}_pump_predictor_full.pkl")
+    joblib.dump(model, f'models/{symbol}_pump_predictor_full.pkl')
+    print(f"\n💾 Full dataset model saved to models/{symbol}_pump_predictor_full.pkl")
 
 
 if __name__ == "__main__":

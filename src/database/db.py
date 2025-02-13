@@ -2,8 +2,6 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
-from database.classes import Prediction
-import numpy as np
 
 
 # Load environment variables from .env file in the project root

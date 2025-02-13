@@ -4,16 +4,39 @@ from database.classes import Prediction
 from database.db import SessionLocal
 from typing import Dict
 import threading
-
+import time
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from contextlib import contextmanager
 
 class PredictionBatcher:
-    def __init__(self, batch_size: int = 60, flush_interval: int = 3600):
+    def __init__(self, batch_size: int = 1, flush_interval: int = 60, max_retries: int = 5):
         self.predictions_queue = deque()
-        self.batch_size = batch_size  # Number of predictions to batch before writing
-        self.flush_interval = flush_interval  # Seconds between forced flushes
+        self.batch_size = batch_size
+        self.flush_interval = flush_interval
         self.last_flush_time = datetime.now()
         self.lock = threading.Lock()
-        
+        self.max_retries = max_retries
+
+    @contextmanager
+    def get_db_session(self):
+        """Context manager for handling database sessions with retry logic"""
+        retry_count = 0
+        while retry_count < self.max_retries:
+            db = SessionLocal()
+            try:
+                yield db
+                break
+            except OperationalError as e:
+                retry_count += 1
+                if retry_count == self.max_retries:
+                    raise
+                print(f"Database connection error (attempt {retry_count}/{self.max_retries}): {e}")
+                time.sleep(2 ** retry_count)  # Exponential backoff
+                db.close()
+            except Exception:
+                db.close()
+                raise
+
     def add_prediction(self, prediction_data: Dict):
         with self.lock:
             self.predictions_queue.append(prediction_data)
@@ -26,22 +49,24 @@ class PredictionBatcher:
         with self.lock:
             if not self.predictions_queue:
                 return
-                
-            db = SessionLocal()
+
+            predictions = []
+            # Create prediction objects outside the database transaction
+            while self.predictions_queue:
+                pred_data = self.predictions_queue.popleft()
+                predictions.append(Prediction(**pred_data))
+
             try:
-                # Bulk insert all predictions in the queue
-                predictions = []
-                while self.predictions_queue:
-                    pred_data = self.predictions_queue.popleft()
-                    predictions.append(Prediction(**pred_data))
-                
-                db.bulk_save_objects(predictions)
-                db.commit()
-                print(f"✅ Batch logged {len(predictions)} predictions to database")
-                self.last_flush_time = datetime.now()
-                
+                with self.get_db_session() as db:
+                    try:
+                        db.bulk_save_objects(predictions)
+                        db.commit()
+                        print(f"✅ Batch logged {len(predictions)} predictions to database")
+                        self.last_flush_time = datetime.now()
+                    except SQLAlchemyError as e:
+                        db.rollback()
+                        raise e
             except Exception as e:
-                db.rollback()
                 print(f"❌ Error batch logging predictions: {e}")
                 # Put failed predictions back in queue
                 with self.lock:
@@ -49,5 +74,3 @@ class PredictionBatcher:
                         pred_dict = pred.__dict__
                         pred_dict.pop('_sa_instance_state', None)
                         self.predictions_queue.appendleft(pred_dict)
-            finally:
-                db.close()

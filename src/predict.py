@@ -124,7 +124,7 @@ class LiveTradingBot:
 
             # If the loaded object is a tuple, assume the first element is the actual model
             if isinstance(model_tuple, tuple):
-                print(f"⚠️ Warning: Model file contains a tuple! Extracting first element...")
+                print(f"Model file contains a tuple! Extracting first element...")
                 model = model_tuple[0]  # Extract the trained model
             else:
                 model = model_tuple  # If not a tuple, it's already the correct model
@@ -197,14 +197,12 @@ class LiveTradingBot:
     async def update_actual_outcomes(self):
         """Check hourly for predictions that need outcome updates"""
         while True:
-            await asyncio.sleep(3600)  # Run every hour instead of every minute
+            await asyncio.sleep(60)  # Run every hour instead of every minute
             try:
                 db = SessionLocal()
                 now_utc = datetime.now(timezone.utc)
-                print(f"Current UTC time: {now_utc}")  # Debug print
                 one_hour_ago = now_utc - timedelta(hours=1)
                 one_hour_ago_naive = one_hour_ago.replace(tzinfo=None)
-                print(f"Querying predictions <= {one_hour_ago_naive}")  # Debug
 
                 # Batch fetch predictions that need updates
                 predictions = db.query(Prediction).filter(
