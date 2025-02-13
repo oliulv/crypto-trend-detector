@@ -188,11 +188,21 @@ class LiveTradingBot:
         print(f"📈 Price: {candle['c']} | Volume: {candle['v']}")
 
     async def handle_batch_predictions(self):
-            """Periodically check and flush batched predictions to database"""
-            while True:
-                await asyncio.sleep(60)  # Check every minute
+        """Periodically check and flush batched predictions to database"""
+        last_check_time = datetime.now()
+        
+        while True:
+            current_time = datetime.now()
+            time_diff = (current_time - last_check_time).seconds
+            
+            # Only check every minute
+            if time_diff >= 60:
                 if self.prediction_batcher.should_flush():
+                    print(f"🕒 Time since last flush: {(current_time - self.prediction_batcher.last_flush_time).seconds}s")
                     self.prediction_batcher.flush_predictions()
+                last_check_time = current_time
+            
+            await asyncio.sleep(60)  # Sleep for 1 minute before next check
 
     async def update_actual_outcomes(self):
         """Check hourly for predictions that need outcome updates"""

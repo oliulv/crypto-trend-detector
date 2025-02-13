@@ -12,10 +12,11 @@ class PredictionBatcher:
     def __init__(self, batch_size: int = 60, flush_interval: int = 3600, max_retries: int = 5):
         self.predictions_queue = deque()
         self.batch_size = batch_size
-        self.flush_interval = flush_interval
+        self.flush_interval = flush_interval  # 3600 seconds = 1 hour
         self.last_flush_time = datetime.now()
         self.lock = threading.Lock()
         self.max_retries = max_retries
+        self._force_flush = False  # New flag for forced flushes
 
     @contextmanager
     def get_db_session(self):
@@ -42,16 +43,24 @@ class PredictionBatcher:
             self.predictions_queue.append(prediction_data)
     
     def should_flush(self) -> bool:
+        # Check time since last flush
+        time_since_last_flush = (datetime.now() - self.last_flush_time).seconds
         return (len(self.predictions_queue) >= self.batch_size or 
-                (datetime.now() - self.last_flush_time).seconds >= self.flush_interval)
+                time_since_last_flush >= self.flush_interval or
+                self._force_flush)
+    
+    # In case we need it for manual use later.
+    def force_flush(self):
+        """Force a flush on next check"""
+        self._force_flush = True
     
     def flush_predictions(self) -> None:
         with self.lock:
             if not self.predictions_queue:
+                self._force_flush = False  # Reset force flush flag
                 return
 
             predictions = []
-            # Create prediction objects outside the database transaction
             while self.predictions_queue:
                 pred_data = self.predictions_queue.popleft()
                 predictions.append(Prediction(**pred_data))
@@ -61,8 +70,9 @@ class PredictionBatcher:
                     try:
                         db.bulk_save_objects(predictions)
                         db.commit()
-                        print(f"✅ Batch logged {len(predictions)} predictions to database")
+                        print(f"✅ Batch logged {len(predictions)} predictions to database at {datetime.now()}")
                         self.last_flush_time = datetime.now()
+                        self._force_flush = False  # Reset force flush flag
                     except SQLAlchemyError as e:
                         db.rollback()
                         raise e
