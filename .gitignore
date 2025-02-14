@@ -1,5 +1,5 @@
 # Ignore the root 'data' folder
-day1bs/data/
+data/
 
 # Ignore ALL __pycache__ folders recursively
 **/__pycache__/
