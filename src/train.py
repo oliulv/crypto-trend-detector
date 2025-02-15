@@ -8,7 +8,7 @@ import os
 # Parameters:
 symbol = "PEPEUSDT"
 start_date = "2023-05-20"
-end_date = "2025-02-04"
+end_date = "2025-02-15"
 
 
 def train_model(symbol, start_date, end_date):

@@ -13,7 +13,7 @@ import os
 # Parameters:
 symbol = "PEPEUSDT"
 start_date = "2023-05-20"
-end_date = "2025-02-04"
+end_date = "2025-02-15"
 
 
 def train_model(symbol, start_date, end_date):
@@ -152,8 +152,8 @@ def train_model(symbol, start_date, end_date):
     print(f"AUC-ROC: {roc_auc_score(y_test, y_pred_calibrated):.2f}")
 
     # 11. Save Model with Calibrator
-    joblib.dump((model_main, calibrator), f'model/{symbol}_pump_predictor.pkl')
-    print(f"\n💾 Calibrated model saved to model/{symbol}_pump_predictor.pkl")
+    joblib.dump((model_main, calibrator), f'models/{symbol}_pump_predictor.pkl')
+    print(f"\n💾 Calibrated model saved to models/{symbol}_pump_predictor.pkl")
 
 
 if __name__ == "__main__":
