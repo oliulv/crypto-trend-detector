@@ -15,3 +15,4 @@ websockets==14.2
 psycopg2-binary==2.9.10 
 certifi==2025.1.31
 backoff==2.2.1
+aiohttp==3.11.12

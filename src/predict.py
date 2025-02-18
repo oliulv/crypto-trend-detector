@@ -20,6 +20,7 @@ import backoff
 from contextlib import contextmanager
 import time
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
+import aiohttp
 
 class LiveTradingBot:
     def __init__(self, symbol="PEPEUSDT"):
@@ -228,76 +229,92 @@ class LiveTradingBot:
                 raise
 
     async def update_actual_outcomes(self):
-        """Check hourly for predictions that need outcome updates with retry logic"""
+        """Check hourly for predictions that need outcome updates with enhanced error handling"""
         while True:
-            await asyncio.sleep(3600)  # Run every hour
-            
             try:
-                with self.get_db_session() as db:
+                await asyncio.sleep(3600)  # Run every hour
+                
+                # Wrap the entire processing in a single database session
+                with self.get_db_session(max_retries=5) as db:
                     now_utc = datetime.now(timezone.utc)
                     one_hour_ago = now_utc - timedelta(hours=1)
                     one_hour_ago_naive = one_hour_ago.replace(tzinfo=None)
 
-                    # Batch fetch predictions that need updates
-                    predictions = db.query(Prediction).filter(
-                        Prediction.timestamp <= one_hour_ago_naive,
-                        Prediction.actual_outcome == None
-                    ).all()
+                    try:
+                        # Fetch predictions in smaller batches to reduce load
+                        batch_size = 100
+                        while True:
+                            predictions = db.query(Prediction).filter(
+                                Prediction.timestamp <= one_hour_ago_naive,
+                                Prediction.actual_outcome == None
+                            ).limit(batch_size).all()
 
-                    if not predictions:
-                        continue
+                            if not predictions:
+                                break
 
-                    # Batch update predictions
-                    updates = []
-                    for pred in predictions:
-                        start_time = int(pred.timestamp.timestamp() * 1000)
-                        end_time = int((pred.timestamp + timedelta(hours=1)).timestamp() * 1000)
-                        
-                        # Add retry logic for Binance API calls
-                        retry_count = 0
-                        max_retries = 3
-                        while retry_count < max_retries:
-                            try:
-                                url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&endTime={end_time}"
-                                response = requests.get(url)
-                                response.raise_for_status()
-                                data = response.json()
+                            updates = []
+                            for pred in predictions:
+                                try:
+                                    start_time = int(pred.timestamp.timestamp() * 1000)
+                                    end_time = int((pred.timestamp + timedelta(hours=1)).timestamp() * 1000)
+                                    
+                                    # Add exponential backoff for Binance API calls
+                                    for attempt in range(3):
+                                        try:
+                                            url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&endTime={end_time}"
+                                            async with aiohttp.ClientSession() as session:
+                                                async with session.get(url) as response:
+                                                    if response.status == 200:
+                                                        data = await response.json()
+                                                        
+                                                        if data:
+                                                            high_prices = [float(candle[2]) for candle in data]
+                                                            max_price = max(high_prices)
+                                                            price_change = (max_price - pred.prediction_close) / pred.prediction_close
+                                                            
+                                                            pred.actual_outcome = 1 if price_change >= 0.05 else 0
+                                                            pred.max_hour_close = max_price
+                                                            updates.append(pred)
+                                                        break
+                                                    else:
+                                                        print(f"Binance API returned status {response.status}")
+                                                        
+                                        except aiohttp.ClientError as e:
+                                            if attempt == 2:  # Last attempt
+                                                print(f"Failed to fetch data for prediction {pred.id} after 3 attempts: {str(e)}")
+                                                break
+                                            wait_time = 2 ** attempt
+                                            await asyncio.sleep(wait_time)
+                                        
+                                except Exception as e:
+                                    print(f"Error processing prediction {pred.id}: {str(e)}")
+                                    continue
 
-                                if not data:
-                                    break
+                            if updates:
+                                try:
+                                    # Commit updates in smaller batches
+                                    for i in range(0, len(updates), 50):
+                                        batch = updates[i:i + 50]
+                                        db.bulk_save_objects(batch)
+                                        db.commit()
+                                    print(f"✅ Updated {len(updates)} prediction outcomes")
+                                except SQLAlchemyError as e:
+                                    db.rollback()
+                                    print(f"❌ Database error while saving updates: {str(e)}")
+                                    raise
 
-                                high_prices = [float(candle[2]) for candle in data]
-                                max_price = max(high_prices) if high_prices else pred.prediction_close
-                                price_change = (max_price - pred.prediction_close) / pred.prediction_close
-                                
-                                pred.actual_outcome = 1 if price_change >= 0.05 else 0
-                                pred.max_hour_close = max_price
-                                updates.append(pred)
-                                break  # Success, exit retry loop
+                            # Small delay between batches to prevent overwhelming the database
+                            await asyncio.sleep(1)
 
-                            except requests.RequestException as e:
-                                retry_count += 1
-                                if retry_count == max_retries:
-                                    print(f"🔴 Failed to fetch data for prediction {pred.id} after {max_retries} attempts: {str(e)}")
-                                    break
-                                wait_time = 2 ** retry_count
-                                print(f"Binance API error, retrying in {wait_time} seconds...")
-                                time.sleep(wait_time)
-
-                    if updates:
-                        try:
-                            db.bulk_save_objects(updates)
-                            db.commit()
-                            print(f"✅ Batch updated {len(updates)} prediction outcomes")
-                        except SQLAlchemyError as e:
-                            db.rollback()
-                            print(f"❌ Database error while saving updates: {str(e)}")
-                            raise
+                    except SQLAlchemyError as e:
+                        print(f"❌ Database query error: {str(e)}")
+                        db.rollback()
+                        raise
 
             except Exception as e:
                 print(f"❌ Error in update_actual_outcomes: {str(e)}")
-                # No need to close db here as context manager handles it
-
+                # Wait a bit before retrying the entire process
+                await asyncio.sleep(300)  # 5 minutes
 
 async def run_all():
     bot = LiveTradingBot()
