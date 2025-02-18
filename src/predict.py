@@ -17,6 +17,9 @@ from log_batcher import PredictionBatcher
 import ssl
 import certifi
 import backoff
+from contextlib import contextmanager
+import time
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 class LiveTradingBot:
     def __init__(self, symbol="PEPEUSDT"):
@@ -204,60 +207,96 @@ class LiveTradingBot:
             
             await asyncio.sleep(60)  # Sleep for 1 minute before next check
 
-    async def update_actual_outcomes(self):
-        """Check hourly for predictions that need outcome updates"""
-        while True:
-            await asyncio.sleep(3600)  # Run every hour instead of every minute
+    @contextmanager
+    def get_db_session(self, max_retries=5):
+        """Context manager for handling database sessions with retry logic"""
+        retry_count = 0
+        while retry_count < max_retries:
+            db = SessionLocal()
             try:
-                db = SessionLocal()
-                now_utc = datetime.now(timezone.utc)
-                one_hour_ago = now_utc - timedelta(hours=1)
-                one_hour_ago_naive = one_hour_ago.replace(tzinfo=None)
+                yield db
+                break
+            except OperationalError as e:
+                retry_count += 1
+                if retry_count == max_retries:
+                    raise
+                print(f"Database connection error (attempt {retry_count}/{max_retries}): {e}")
+                time.sleep(2 ** retry_count)  # Exponential backoff
+                db.close()
+            except Exception:
+                db.close()
+                raise
 
-                # Batch fetch predictions that need updates
-                predictions = db.query(Prediction).filter(
-                    Prediction.timestamp <= one_hour_ago_naive,
-                    Prediction.actual_outcome == None
-                ).all()
+    async def update_actual_outcomes(self):
+        """Check hourly for predictions that need outcome updates with retry logic"""
+        while True:
+            await asyncio.sleep(3600)  # Run every hour
+            
+            try:
+                with self.get_db_session() as db:
+                    now_utc = datetime.now(timezone.utc)
+                    one_hour_ago = now_utc - timedelta(hours=1)
+                    one_hour_ago_naive = one_hour_ago.replace(tzinfo=None)
 
-                if not predictions:
-                    continue
+                    # Batch fetch predictions that need updates
+                    predictions = db.query(Prediction).filter(
+                        Prediction.timestamp <= one_hour_ago_naive,
+                        Prediction.actual_outcome == None
+                    ).all()
 
-                # Batch update predictions
-                updates = []
-                for pred in predictions:
-                    start_time = int(pred.timestamp.timestamp() * 1000)
-                    end_time = int((pred.timestamp + timedelta(hours=1)).timestamp() * 1000)
-                    url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&endTime={end_time}"
+                    if not predictions:
+                        continue
 
-                    try:
-                        response = requests.get(url)
-                        response.raise_for_status()
-                        data = response.json()
-
-                        if not data:
-                            continue
-
-                        high_prices = [float(candle[2]) for candle in data]
-                        max_price = max(high_prices) if high_prices else pred.prediction_close
-                        price_change = (max_price - pred.prediction_close) / pred.prediction_close
+                    # Batch update predictions
+                    updates = []
+                    for pred in predictions:
+                        start_time = int(pred.timestamp.timestamp() * 1000)
+                        end_time = int((pred.timestamp + timedelta(hours=1)).timestamp() * 1000)
                         
-                        pred.actual_outcome = 1 if price_change >= 0.05 else 0
-                        pred.max_hour_close = max_price
-                        updates.append(pred)
+                        # Add retry logic for Binance API calls
+                        retry_count = 0
+                        max_retries = 3
+                        while retry_count < max_retries:
+                            try:
+                                url = f"https://api.binance.com/api/v3/klines?symbol=PEPEUSDT&interval=1m&startTime={start_time}&endTime={end_time}"
+                                response = requests.get(url)
+                                response.raise_for_status()
+                                data = response.json()
 
-                    except Exception as e:
-                        print(f"🔴 Error for prediction {pred.id}: {str(e)}")
+                                if not data:
+                                    break
 
-                if updates:
-                    db.bulk_save_objects(updates)
-                    db.commit()
-                    print(f"✅ Batch updated {len(updates)} prediction outcomes")
+                                high_prices = [float(candle[2]) for candle in data]
+                                max_price = max(high_prices) if high_prices else pred.prediction_close
+                                price_change = (max_price - pred.prediction_close) / pred.prediction_close
+                                
+                                pred.actual_outcome = 1 if price_change >= 0.05 else 0
+                                pred.max_hour_close = max_price
+                                updates.append(pred)
+                                break  # Success, exit retry loop
+
+                            except requests.RequestException as e:
+                                retry_count += 1
+                                if retry_count == max_retries:
+                                    print(f"🔴 Failed to fetch data for prediction {pred.id} after {max_retries} attempts: {str(e)}")
+                                    break
+                                wait_time = 2 ** retry_count
+                                print(f"Binance API error, retrying in {wait_time} seconds...")
+                                time.sleep(wait_time)
+
+                    if updates:
+                        try:
+                            db.bulk_save_objects(updates)
+                            db.commit()
+                            print(f"✅ Batch updated {len(updates)} prediction outcomes")
+                        except SQLAlchemyError as e:
+                            db.rollback()
+                            print(f"❌ Database error while saving updates: {str(e)}")
+                            raise
 
             except Exception as e:
-                print(f"❌ Error updating outcomes: {e}")
-            finally:
-                db.close()
+                print(f"❌ Error in update_actual_outcomes: {str(e)}")
+                # No need to close db here as context manager handles it
 
 
 async def run_all():
