@@ -60,27 +60,47 @@ class PredictionBatcher:
                 self._force_flush = False  # Reset force flush flag
                 return
 
-            predictions = []
-            while self.predictions_queue:
-                pred_data = self.predictions_queue.popleft()
-                predictions.append(Prediction(**pred_data))
-
-            try:
-                with self.get_db_session() as db:
-                    try:
-                        db.bulk_save_objects(predictions)
-                        db.commit()
-                        print(f"✅ Batch logged {len(predictions)} predictions to database at {datetime.now()}")
-                        self.last_flush_time = datetime.now()
-                        self._force_flush = False  # Reset force flush flag
-                    except SQLAlchemyError as e:
-                        db.rollback()
-                        raise e
-            except Exception as e:
-                print(f"❌ Error batch logging predictions: {e}")
-                # Put failed predictions back in queue
-                with self.lock:
-                    for pred in predictions:
-                        pred_dict = pred.__dict__
-                        pred_dict.pop('_sa_instance_state', None)
-                        self.predictions_queue.appendleft(pred_dict)
+            # Copy predictions to a local list
+            predictions_to_process = list(self.predictions_queue)
+            self.predictions_queue.clear()
+            
+            # Process in smaller sub-batches
+            sub_batch_size = 10  # Smaller batches for more reliability
+            successful_predictions = []
+            
+            print(f"🔄 Processing {len(predictions_to_process)} predictions in smaller batches...")
+            
+            for i in range(0, len(predictions_to_process), sub_batch_size):
+                sub_batch = predictions_to_process[i:i+sub_batch_size]
+                prediction_objects = [Prediction(**pred_data) for pred_data in sub_batch]
+                
+                # Try to save this small batch
+                try:
+                    with self.get_db_session() as db:
+                        try:
+                            db.bulk_save_objects(prediction_objects)
+                            db.commit()
+                            successful_predictions.extend(sub_batch)
+                            print(f"✅ Sub-batch {i//sub_batch_size + 1} logged {len(prediction_objects)} predictions successfully")
+                        except SQLAlchemyError as e:
+                            db.rollback()
+                            print(f"❌ Database error in sub-batch {i//sub_batch_size + 1}: {str(e)}")
+                            # Put failed predictions back in queue
+                            with self.lock:
+                                for pred in sub_batch:
+                                    self.predictions_queue.append(pred)
+                except Exception as e:
+                    print(f"❌ Connection error in sub-batch {i//sub_batch_size + 1}: {str(e)}")
+                    # Put failed predictions back in queue
+                    with self.lock:
+                        for pred in sub_batch:
+                            self.predictions_queue.append(pred)
+            
+            # Update last flush time if any predictions were successful
+            if successful_predictions:
+                self.last_flush_time = datetime.now()
+                print(f"✅ Total logged: {len(successful_predictions)}/{len(predictions_to_process)} predictions")
+            else:
+                print("⚠️ No predictions were successfully logged")
+                
+            self._force_flush = False  # Reset force flush flag
