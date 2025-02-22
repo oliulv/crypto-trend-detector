@@ -1,5 +1,5 @@
 # Ignore the root 'data' folder
-lab/data/
+data/
 
 # Ignore ALL __pycache__ folders recursively
 **/__pycache__/
