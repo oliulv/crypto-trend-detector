@@ -6,7 +6,6 @@ import asyncio
 import websockets
 import json
 import joblib
-import requests
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from database.classes import Prediction
