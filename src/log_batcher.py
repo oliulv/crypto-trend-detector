@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # Add root directory to path
+
 from collections import deque
 from datetime import datetime
 from database.classes import Prediction
