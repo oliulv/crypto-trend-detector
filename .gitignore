@@ -1,5 +1,6 @@
-# Ignore the root 'data' folder
+# Ignore the root data and vscode folder
 data/
+.vscode/
 
 # Ignore ALL __pycache__ folders recursively
 **/__pycache__/
