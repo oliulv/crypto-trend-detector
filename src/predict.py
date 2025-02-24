@@ -2,24 +2,25 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # Add root directory to path
 
+from db.classes import Prediction
+from db.db import SessionLocal
+from utils.live.feature_engine import LiveFeatureEngine
+from utils.live.log_batcher import PredictionBatcher
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from contextlib import contextmanager
 import asyncio
 import websockets
 import json
 import joblib
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from database.classes import Prediction
-from feature_engine import LiveFeatureEngine
-from database.db import SessionLocal
 import uvicorn
-from log_batcher import PredictionBatcher
 import ssl
 import certifi
 import backoff
-from contextlib import contextmanager
 import time
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
 import aiohttp
+
 
 class LiveTradingBot:
     def __init__(self, symbol="PEPEUSDT"):

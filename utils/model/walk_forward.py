@@ -18,7 +18,7 @@ def analyze_model(symbol, start_date, end_date):
     np.seterr(invalid='ignore')  # Just to avoid that error message for now.
 
     # Load model and data
-    loaded = joblib.load(f'model/{symbol}_pump_predictor.pkl')
+    loaded = joblib.load(f'models/{symbol}_pump_predictor.pkl')
     # Fix: if loaded is a tuple, extract the model
     if isinstance(loaded, tuple):
         model = loaded[0]

@@ -225,7 +225,7 @@ def add_extra_features(df):
 
     # STATISTICAL FEATURES:
     # Rolling Skewness (30-min)
-    df['return_skew'] = df['close'].pct_change().rolling(30).skew()
+    df['return_skew'] = df['close'].pct_change().rolling(30, center=False).skew()
 
     # Entropy (60-min window)
     def price_entropy(x):
@@ -267,7 +267,7 @@ def add_extra_features(df):
         df['taker_buy_base'] - (df['volume'] - df['taker_buy_base'])) / df['volume']
 
     # Statistical Features
-    df['rolling_kurtosis'] = df['close'].pct_change().rolling(30).apply(kurtosis)
+    df['rolling_kurtosis'] = df['close'].pct_change().rolling(30, center=False).apply(kurtosis)
 
     # Temporal Features
     df['lunar_phase'] = (df['timestamp'].dt.day % 29) / 29  # Simulated lunar phase

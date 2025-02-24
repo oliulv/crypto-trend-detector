@@ -4,8 +4,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # A
 
 from collections import deque
 from datetime import datetime
-from database.classes import Prediction
-from database.db import SessionLocal
+from db.classes import Prediction
+from db.db import SessionLocal
 from typing import Dict
 import threading
 import time
