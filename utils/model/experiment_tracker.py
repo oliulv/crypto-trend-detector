@@ -87,18 +87,31 @@ class ExperimentTracker:
 
     def log_results(
         self,
-        experiment: Experiment,           # Reference to existing experiment
-        metrics: Dict[str, float],       # Performance metrics
-        walk_forward: bool = False,      # Whether walk-forward testing was used
-        initial_train_window: Optional[int] = None,  # Initial training window size
-        step: Optional[int] = None,      # Step size between iterations
-        test_window: Optional[int] = None # Test window size
+        experiment: Experiment,
+        metrics: Dict[str, float],
+        walk_forward: bool = False,
+        initial_train_window: Optional[int] = None,
+        step: Optional[int] = None,
+        test_window: Optional[int] = None
     ):
-        """
-        Logs experiment results to database.
-        Returns db results object.
-        Supports both simple train/test splits and walk-forward testing scenarios.
-        """
+        """Logs experiment results to database."""
+        results_metrics = {
+            # Overall metrics only
+            'accuracy': metrics['accuracy'],       # Keep overall accuracy
+            'precision': metrics['precision'],
+            'recall': metrics['recall'],
+            'f1': metrics['f1'],
+            'roc_auc': metrics['auc_roc'],
+            'best_threshold': metrics['optimal_threshold'],
+            
+            # Per-class metrics (no accuracy)
+            'precision_0': metrics['precision_0'],
+            'recall_0': metrics['recall_0'],
+            'f1_0': metrics['f1_0'],
+            'precision_1': metrics['precision_1'],
+            'recall_1': metrics['recall_1'],
+            'f1_1': metrics['f1_1']
+        }
         
         results = Results(
             experiment_id=experiment.experiment_id,
@@ -106,12 +119,11 @@ class ExperimentTracker:
             initial_train_window=initial_train_window,
             step=step,
             test_window=test_window,
-            **metrics  # Unpack metrics dictionary
+            **results_metrics
         )
         
         self.db.add(results)
         self.db.commit()
-        print(f"Logged results for experiment {experiment.experiment_id}")
         return results
 
     def get_experiment_results(self, experiment_id: int) -> List[Results]:

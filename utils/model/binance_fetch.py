@@ -8,15 +8,43 @@ import sys
 from scipy.stats import kurtosis, entropy
 
 
-# Parameters:
+# Basic parameters
 symbol = "PEPEUSDT"
 interval = "1m"
 start_date = "2023-05-20"
 end_date = datetime.now().strftime("%Y-%m-%d")
 
+# Label parameters
+window_minutes = 60  # Prediction window in minutes
+direction = "pump"   # "pump" or "dump"
+threshold = 0.05     # Price change threshold (5%)
 
-# Create data directory if not exists
-os.makedirs('data', exist_ok=True)
+def format_window_string(minutes):
+    """Convert minutes to human readable window string"""
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = minutes // 60
+    return f"{hours}h"
+
+def create_label_type():
+    """Generate label type string from parameters"""
+    direction_str = direction.lower()
+    threshold_str = str(int(threshold * 100)).zfill(2)
+    return f"{direction_str}{threshold_str}"
+
+
+def ensure_project_paths():
+    """Ensure all required project directories exist"""
+    # Get project root (two levels up from script)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    data_dir = os.path.join(project_root, 'data')
+    
+    # Create data directory if it doesn't exist
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+        print(f"Created data directory at: {data_dir}")
+    
+    return project_root
 
 
 # Terminal visuals for vibes
@@ -25,24 +53,10 @@ class TerminalVisuals:
     def fetch_animation(iteration, total):
         phases = ("⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿")
         percent = ("{0:.1f}").format(100 * (iteration / float(total)))
-        sys.stdout.write(f"\r\033[34m{phases[iteration % 8]}\033[0m Decrypting "
-                         f"\033[33m{datetime.now().strftime('%H:%M:%S')}\033[0m | "
-                         f"Epochs: \033[35m{total}\033[0m | "
-                         f"Revelation: \033[36m{percent}%\033[0m")
+        sys.stdout.write(f"\r{phases[iteration % 8]} Fetching data | "
+                        f"\033[90m{datetime.now().strftime('%H:%M:%S')}\033[0m | "
+                        f"Progress: {percent}%")
         sys.stdout.flush()
-
-    @staticmethod
-    def crypto_header():
-        print(r"""
-    \033[35m
-    ███████╗ ██████╗  █████╗ ██╗  ██╗
-    ██╔════╝██╔═══██╗██╔══██╗██║ ██╔╝
-    █████╗  ██║   ██║███████║█████╔╝ 
-    ██╔══╝  ██║   ██║██╔══██║██╔═██╗ 
-    ██║     ╚██████╔╝██║  ██║██║  ██╗
-    ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
-    \033[0m
-        """)
 
 
 def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
@@ -52,10 +66,8 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     start_time = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
     end_time = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp() * 1000)
     
-    # Add mystical header
-    TerminalVisuals.crypto_header()
-    print(f"\033[35m•_ Starting {symbol} data ritual ••_\033[0m")
-    print(f"\033[33mTime Range: {start_date} → {end_date}\033[0m\n")
+    print(f"Fetching {symbol} data")
+    print(f"Period: {start_date} to {end_date}\n")
     
     total_pages = ((end_time - start_time) // (1000 * 60 * 1000)) + 1
     page_count = 0
@@ -86,10 +98,9 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
             
         data.extend(chunk)
         
-        # Add dramatic data reveal
-        print(f"\n\033[32m✔ Received {len(chunk)} temporal fragments\033[0m")
-        print(f"   First alignment: \033[36m{datetime.fromtimestamp(chunk[0][0]/1000)}\033[0m")
-        print(f"   Last chronal signature:  \033[36m{datetime.fromtimestamp(chunk[-1][0]/1000)}\033[0m")
+        print(f"\nReceived {len(chunk)} records")
+        print(f"\033[90mRange: {datetime.fromtimestamp(chunk[0][0]/1000)} → "
+              f"{datetime.fromtimestamp(chunk[-1][0]/1000)}\033[0m")
         
         start_time = int(chunk[-1][0]) + 1
         time.sleep(0.1)
@@ -110,14 +121,14 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
 
 
 def create_label(df):
-    # Calculate future max (ONLY FOR LABEL)
-    future_max = df['close'].shift(-1).rolling(60, min_periods=60).max()
-    
-    # Calculate label directly
-    df['label'] = ((future_max - df['close']) / df['close'] >= 0.05).astype(int)
-    
-    # Drop future-dependent columns
-    df = df.drop(columns=['future_max'], errors='ignore')
+    """Create labels based on parameters"""
+    # Calculate future price movement
+    if direction == "pump":
+        future_price = df['close'].shift(-1).rolling(window_minutes, min_periods=window_minutes).max()
+        df['label'] = ((future_price - df['close']) / df['close'] >= threshold).astype(int)
+    else:  # dump
+        future_price = df['close'].shift(-1).rolling(window_minutes, min_periods=window_minutes).min()
+        df['label'] = ((df['close'] - future_price) / df['close'] >= threshold).astype(int)
     
     # Remove rows without future data
     df = df.dropna(subset=['label'])
@@ -275,20 +286,51 @@ def add_extra_features(df):
     return df
 
 
-# Fetch and process data
-df = fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date)
-df = add_extra_features(df)
+def generate_filename(symbol, interval, window, label_type, start_date, end_date):
+    """Generate standardized filename for data storage
+    
+    Args:
+        symbol (str): Trading pair symbol (e.g. 'PEPE')
+        interval (str): Candle interval (e.g. '1m', '5m')
+        window (str): Prediction window (e.g. '1h', '4h')
+        label_type (str): Type of prediction (e.g. 'pump05')
+        start_date (str): Start date in YYYY-MM-DD format
+        end_date (str): End date in YYYY-MM-DD format
+    """
+    # Convert dates to compact format
+    start = datetime.strptime(start_date, "%Y-%m-%d").strftime("%y%m%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d").strftime("%y%m%d")
+    
+    return f"{symbol}_{interval}_{window}-{label_type}_{start}_{end}.csv"
 
-# Save to CSV
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-data_filename = f'{symbol}_1hr_window_labels_{start_date}_to_{end_date}.csv'
-data_path = os.path.join(project_root, 'data', data_filename)
-df.to_csv(data_path, index=False)
 
-# Final mystical output
-print("\n\033[35m««« Data Conjuration Complete »»»\033[0m")
-print(f"↳ Temporal Fragments: \033[36m{len(df)}\033[0m")
-print(f"↳ Prophetic Visions: \033[32m{df['label'].sum()}\033[0m")
-print(f"↳ Omen Ratio: \033[31m{df['label'].mean()*100:.2f}%\033[0m")
-print(f"↳ Arcane Archive: \033[34m{data_path}\033[0m")
-print("\033[33m\n«« The stars whisper their secrets »»\033[0m\n")
+if __name__ == "__main__":
+    # Ensure project structure exists
+    project_root = ensure_project_paths()
+    
+    # Fetch and process data
+    df = fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date)
+    df = add_extra_features(df)
+
+    # Generate window string and label type from parameters
+    window = format_window_string(window_minutes)
+    label_type = create_label_type()
+
+    # Save to CSV with automatically generated parameters
+    data_filename = generate_filename(
+        symbol=symbol,
+        interval=interval,
+        window=window,
+        label_type=label_type,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    data_path = os.path.join(project_root, 'data', data_filename)
+    df.to_csv(data_path, index=False)
+
+    # Final mystical output
+    print("\nData processing complete")
+    print(f"Total records: {len(df)}")
+    print(f"Positive signals: {df['label'].sum()} ({df['label'].mean()*100:.2f}%)")
+    print(f"Saved file: {data_filename} to: {data_path}")
