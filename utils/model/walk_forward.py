@@ -84,8 +84,9 @@ def analyze_model(symbol, start_date, end_date):
 
 
 def time_series_walk_forward_validation(model, X, y, threshold=0.613, initial_train_size=(43200*6), step=43200):
-    """Walk-forward validation for time series.
-       Also returns per-iteration classification metrics (as dictionaries).
+    """
+    Walk-forward validation for time series.
+    Also returns per-iteration classification metrics (as dictionaries).
     """
     aggregated_predictions = []
     aggregated_true_labels = []
