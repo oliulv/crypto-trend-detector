@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from database.db import SessionLocal
-from database.classes import Prediction
+from db.db import SessionLocal
+from db.classes import Prediction
 from typing import List
 
 app = FastAPI()
