@@ -29,13 +29,7 @@ class ModelManager:
         
     def load_data(self, custom_path: str = None) -> pd.DataFrame:
         """Load data from default location or custom path."""
-        if custom_path:
-            self.df = pd.read_csv(custom_path, parse_dates=['timestamp'])
-        else:
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            data_filename = f'{self.symbol}_1hr_window_labels_{self.start_date}_to_{self.end_date}.csv'
-            data_path = os.path.join(project_root, 'data', data_filename)
-            self.df = pd.read_csv(data_path, parse_dates=['timestamp'])
+        self.df = pd.read_csv(custom_path, parse_dates=['timestamp'])
         print("🕵️♂️ Dataset loaded successfully")
         return self.df
     
@@ -86,7 +80,7 @@ class ModelManager:
         self.model = LGBMClassifier(**default_params)
         return self.model
     
-    def fit_and_evaluate(self, weight_multiplier: float = 1, class_ratio_multiplier: float = 1):
+    def fit_and_evaluate(self, weight_multiplier: float = 2, class_ratio_multiplier: float = 1):
         """Train model with sample weights and class balancing."""
         print("\n🏋️ Training model...")
         
@@ -102,7 +96,7 @@ class ModelManager:
         )
         return self.model
     
-    def calibrate_probabilities(self, test_size: float = 0.2, weight_multiplier: float = 2):
+    def calibrate_probabilities(self, test_size: float = 0.25, weight_multiplier: float = 2):
         """Calibrate probability predictions."""
         print("\n🔧 Calibrating probabilities...")
         
