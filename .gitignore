@@ -1,6 +1,7 @@
 # Ignore the root data and vscode folder
 data/
 .vscode/
+notebooks/
 
 # Ignore ALL __pycache__ folders recursively
 **/__pycache__/
