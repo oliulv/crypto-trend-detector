@@ -9,6 +9,7 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.isotonic import IsotonicRegression
 import os
 import shap
+from production_model import ProductionModel
 
 class ModelManager:
     def __init__(self, symbol: str, start_date: str, end_date: str):
@@ -22,11 +23,11 @@ class ModelManager:
         self.X_train = self.X_test = None
         self.y_train = self.y_test = None
         self.model = None
-        self.model_main = None
-        self.calibrator = None
+        self.y_pred_proba = None            # Raw probabilities
+        self.y_pred_calibrated = None       # Optional calibrated probabilities
         self.optimal_threshold = None
-        self.y_pred_calibrated = None
-        
+        self.calibrator = None
+
     def load_data(self, custom_path: str = None) -> pd.DataFrame:
         """Load data from default location or custom path."""
         self.df = pd.read_csv(custom_path, parse_dates=['timestamp'])
@@ -80,20 +81,24 @@ class ModelManager:
         self.model = LGBMClassifier(**default_params)
         return self.model
     
-    def fit_and_evaluate(self, weight_multiplier: float = 2, class_ratio_multiplier: float = 1):
-        """Train model with sample weights and class balancing."""
+    def fit_and_evaluate(self, weight_multiplier: float = 2):
+        """Train model and store raw probabilities."""
         print("\n🏋️ Training model...")
         
+        # Calculate class weights
         class_ratio = len(self.y_train[self.y_train == 0]) / len(self.y_train[self.y_train == 1])
-        self.model.set_params(scale_pos_weight=class_ratio * class_ratio_multiplier)
+        self.model.set_params(scale_pos_weight=class_ratio)
         
+        # Train with sample weights
         sample_weights = np.where(self.y_train == 1, weight_multiplier, 1)
-        
         self.model.fit(
             self.X_train, self.y_train,
             sample_weight=sample_weights,
             eval_set=[(self.X_test, self.y_test)]
         )
+        
+        # Store raw probabilities
+        self.y_pred_proba = self.model.predict_proba(self.X_test)[:, 1]
         return self.model
     
     def calibrate_probabilities(self, test_size: float = 0.25, weight_multiplier: float = 2):
@@ -128,19 +133,21 @@ class ModelManager:
         return self.y_pred_calibrated
     
     def tune_threshold(self, min_recall: float = 0.5, min_precision: float = 0.65) -> tuple:
-        """Find optimal threshold based on precision-recall trade-off."""
+        """Tune threshold on current predictions."""
         print("\n🎯 Tuning threshold...")
         
-        precisions, recalls, thresholds = precision_recall_curve(self.y_test, self.y_pred_calibrated)
-        viable = np.where((recalls[:-1] >= min_recall) & (precisions[:-1] >= min_precision))[0]
+        predictions = self.y_pred_calibrated if self.calibrator else self.y_pred_proba
+        precisions, recalls, thresholds = precision_recall_curve(self.y_test, predictions)
         
+        viable = np.where((recalls[:-1] >= min_recall) & (precisions[:-1] >= min_precision))[0]
         if len(viable) > 0:
             best_idx = viable[np.argmax(precisions[viable])]
             self.optimal_threshold = thresholds[best_idx]
-            return self.optimal_threshold, precisions[best_idx], recalls[best_idx]
-        
-        self.optimal_threshold = 0.5
-        return 0.5, precisions[-1], recalls[-1]
+        else:
+            self.optimal_threshold = 0.5
+            
+        print(f"Optimal threshold: {self.optimal_threshold:.4f}")
+        return self.optimal_threshold
     
     def plot_diagnostics(self):
         """Generate diagnostic visualizations."""
@@ -203,15 +210,15 @@ class ModelManager:
         plt.show()
     
     def get_metrics(self) -> dict:
-        """Calculate and display all relevant metrics."""
-        y_pred_class = (self.y_pred_calibrated >= self.optimal_threshold).astype(int)
+        """Calculate metrics using current model state."""
+        predictions = self.y_pred_calibrated if self.calibrator else self.y_pred_proba
+        y_pred = (predictions >= self.optimal_threshold).astype(int)
         
-        # Get full classification report as dict
         report = classification_report(
-            self.y_test, y_pred_class, 
+            self.y_test, y_pred,
             digits=4,
             target_names=['Class 0', 'Class 1'],
-            output_dict=True  # This gives us a dictionary instead of string
+            output_dict=True
         )
         
         metrics = {
@@ -220,7 +227,7 @@ class ModelManager:
             'precision': report['weighted avg']['precision'],
             'recall': report['weighted avg']['recall'],
             'f1': report['weighted avg']['f1-score'],
-            'auc_roc': roc_auc_score(self.y_test, self.y_pred_calibrated),
+            'auc_roc': roc_auc_score(self.y_test, predictions),
             'optimal_threshold': self.optimal_threshold,
             
             # Class 0 specific metrics
@@ -253,34 +260,39 @@ class ModelManager:
         print(f"Recall:    {metrics['recall_1']:.4f}")
         print(f"F1-Score:  {metrics['f1_1']:.4f}")
         
+        print(f"\nUsing {'calibrated' if self.calibrator else 'raw'} probabilities")
+        print(f"Classification threshold: {self.optimal_threshold:.4f}")
+        
         return metrics
     
     def save_model(self, custom_path: str = None):
-        """Retrain on full dataset and save the model."""
-        print("\n🔄 Retraining model on full dataset...")
+        """Save production-ready model with all optimizations."""
+        print("\n🔄 Preparing production model...")
         
-        # Get all features and retrain
-        X_full, y_full = self.prepare_features()
-        model_params = self.model.get_params()
-        self.model_main = LGBMClassifier(**model_params)
-        self.model_main.fit(X_full, y_full)
+        # Retrain on full dataset with optimizations
+        self.retrain_full()
         
-        # Calibrate on full dataset
-        probs = self.model_main.predict_proba(X_full)[:, 1]
-        self.calibrator = IsotonicRegression(out_of_bounds='clip')
-        self.calibrator.fit(probs, y_full)
+        # Create production model with tuned threshold
+        prod_model = ProductionModel(
+            base_model=self.model,
+            threshold=self.optimal_threshold,  # Use tuned threshold
+            calibrator=self.calibrator        # Optional calibrator
+        )
         
         # Save model
         if not custom_path:
             os.makedirs('models', exist_ok=True)
             custom_path = f'models/{self.symbol}_pump_predictor.pkl'
         
-        joblib.dump((self.model_main, self.calibrator), custom_path)
-        print(f"\n💾 Model saved to {custom_path}")
+        joblib.dump(prod_model, custom_path)
+        print(f"\n💾 Production model saved to {custom_path}")
+        print(f"    • Using threshold: {self.optimal_threshold:.4f}")
+        print(f"    • Calibration: {'enabled' if self.calibrator else 'disabled'}")
+        
         return custom_path
 
     def retrain_full(self):
-        """Retrain model on full dataset before saving."""
+        """Retrain model on full dataset using optimized settings."""
         print("\n🔄 Retraining model on full dataset...")
         
         # Get all features
@@ -288,15 +300,21 @@ class ModelManager:
         
         # Configure model with same parameters
         model_params = self.model.get_params()
-        self.model_main = LGBMClassifier(**model_params)
+        self.model = LGBMClassifier(**model_params)
         
         # Train on full dataset
-        self.model_main.fit(X_full, y_full)
+        print("Training final model...")
+        sample_weights = np.where(y_full == 1, 2, 1)  # Use same weight multiplier
+        self.model.fit(X_full, y_full, sample_weight=sample_weights)
         
-        # Calibrate on full dataset
-        probs = self.model_main.predict_proba(X_full)[:, 1]
-        self.calibrator = IsotonicRegression(out_of_bounds='clip')
-        self.calibrator.fit(probs, y_full)
+        # Optional calibration on full dataset
+        if self.calibrator is not None:
+            print("Applying calibration to full model...")
+            probs = self.model.predict_proba(X_full)[:, 1]
+            self.calibrator = IsotonicRegression(out_of_bounds='clip')
+            self.calibrator.fit(probs, y_full)
+        
+        return self.model
 
 if __name__ == "__main__":
     symbol = "PEPEUSDT"
