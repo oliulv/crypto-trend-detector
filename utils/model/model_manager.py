@@ -11,51 +11,52 @@ import os
 import shap
 from production_model import ProductionModel
 
+
 class ModelManager:
     def __init__(self, symbol: str, start_date: str, end_date: str):
         """Initialize ModelManager with basic parameters."""
-        self.symbol = symbol
-        self.start_date = start_date
-        self.end_date = end_date
+        self.symbol = symbol            # Trading symbol
+        self.start_date = start_date    # Start date for data
+        self.end_date = end_date        # End date for data
         
         # Initialize attributes
-        self.df = None
-        self.X_train = self.X_test = None
-        self.y_train = self.y_test = None
-        self.model = None
+        self.df = None                      # Dataframe
+        self.X_train = self.X_test = None   # Features
+        self.y_train = self.y_test = None   # Target Variable
+        self.model = None                   # Model
         self.y_pred_proba = None            # Raw probabilities
         self.y_pred_calibrated = None       # Optional calibrated probabilities
-        self.optimal_threshold = None
-        self.calibrator = None
+        self.optimal_threshold = None       # Optimal threshold (default 0.5)    
+        self.calibrator = None              # Optional calibrator
 
     def load_data(self, custom_path: str = None) -> pd.DataFrame:
-        """Load data from default location or custom path."""
-        self.df = pd.read_csv(custom_path, parse_dates=['timestamp'])
-        print("🕵️♂️ Dataset loaded successfully")
+        """Load data from custom path."""
+        self.df = pd.read_csv(custom_path, parse_dates=['timestamp']) # Load data from csv into our dataframe
+        print("🕵️♂️ Dataset loaded successfully")   
         return self.df
     
     def prepare_features(self, drop_columns: list = None, fill_method: str = 'ffill') -> tuple:
         """Prepare features with configurable options."""
-        drop_cols = ['label', 'timestamp'] if drop_columns is None else drop_columns
-        X = self.df.drop(columns=drop_cols)
-        y = self.df['label']
+        drop_cols = ['label', 'timestamp'] if drop_columns is None else drop_columns # Drop columns label and timestamp by default, unless otherwise specified
+        X = self.df.drop(columns=drop_cols) # Drop columns
+        y = self.df['label']                # Target variable
         
-        if fill_method == 'ffill':
+        if fill_method == 'ffill':  # Fill missing values with forward fill
             X = X.ffill().fillna(0)
-        elif fill_method == 'mean':
+        elif fill_method == 'mean': # Fill missing values with mean
             X = X.fillna(X.mean())
             
         return X, y
     
     def split_data(self, test_window_days: int = 100) -> tuple:
         """Split data with configurable test window."""
-        X, y = self.prepare_features()
-        split_date = self.df['timestamp'].max() - pd.Timedelta(days=test_window_days)
-        train_idx = self.df['timestamp'] < split_date
-        test_idx = self.df['timestamp'] >= split_date
+        X, y = self.prepare_features()                  # Prepare features through our function
+        split_date = self.df['timestamp'].max() - pd.Timedelta(days=test_window_days)   # Calculate split date
+        train_idx = self.df['timestamp'] < split_date   # Define train data               
+        test_idx = self.df['timestamp'] >= split_date   # Define test data             
         
-        self.X_train, self.X_test = X[train_idx], X[test_idx]
-        self.y_train, self.y_test = y[train_idx], y[test_idx]
+        self.X_train, self.X_test = X[train_idx], X[test_idx]   # Split features into train and test
+        self.y_train, self.y_test = y[train_idx], y[test_idx]   # Split target variable into train and test
         print("📊 Data split completed")
         return self.X_train, self.X_test, self.y_train, self.y_test
     
@@ -73,78 +74,71 @@ class ModelManager:
             'n_estimators': 1000,
             'early_stopping_round': 200,
             'eval_metric': 'auc'
-        }
+        } # Default parameters
         
         if custom_params:
-            default_params.update(custom_params)
+            default_params.update(custom_params) # Update default parameters with custom parameters
             
-        self.model = LGBMClassifier(**default_params)
+        self.model = LGBMClassifier(**default_params) # Initialize model with parameters
         return self.model
     
     def fit_and_evaluate(self, weight_multiplier: float = 2):
         """Train model and store raw probabilities."""
         print("\n🏋️ Training model...")
         
-        # Calculate class weights
-        class_ratio = len(self.y_train[self.y_train == 0]) / len(self.y_train[self.y_train == 1])
-        self.model.set_params(scale_pos_weight=class_ratio)
-        
         # Train with sample weights
-        sample_weights = np.where(self.y_train == 1, weight_multiplier, 1)
+        sample_weights = np.where(self.y_train == 1, weight_multiplier, 1) # Assign sample weights, weight_multiplier gives our Class 1 more significance.
+
         self.model.fit(
-            self.X_train, self.y_train,
-            sample_weight=sample_weights,
-            eval_set=[(self.X_test, self.y_test)]
+            self.X_train, self.y_train,             # Train the model
+            sample_weight=sample_weights,           # Assign sample weights
+            eval_set=[(self.X_test, self.y_test)]   # Evaluate trained model on test set
         )
         
         # Store raw probabilities
-        self.y_pred_proba = self.model.predict_proba(self.X_test)[:, 1]
-        return self.model
+        self.y_pred_proba = self.model.predict_proba(self.X_test)[:, 1] # Store raw probabilities
+        return self.model                                               # Only storing Class 1, as we only need one class for binary classification
     
-    def calibrate_probabilities(self, test_size: float = 0.25, weight_multiplier: float = 2):
-        """Calibrate probability predictions."""
+    def calibrate_probabilities(self, val_size: float = 0.25):
+        """Calibrate probability predictions using existing model."""
         print("\n🔧 Calibrating probabilities...")
         
-        X_train_main, X_val, y_train_main, y_val = train_test_split(
-            self.X_train, self.y_train, test_size=test_size, shuffle=False
+        # Split off a validation set for calibration
+        X_val, y_val = train_test_split(    # Split training data (from first split) into training and validation sets
+            self.X_train, self.y_train,     # Get our training data that will be split
+            test_size=val_size,             # Set validation size
+            shuffle=False,                  # Do not shuffle data (time series data can't be shuffled)   
+            return_train=False              # Only return validation set (dont need training set)
         )
         
-        sample_weights = np.where(self.y_train == 1, weight_multiplier, 1)
-        n_main = len(X_train_main)
-        sample_weights_main = sample_weights[:n_main]
-        sample_weights_val = sample_weights[n_main:]
+        # Get probabilities from existing model
+        val_probs = self.model.predict_proba(X_val)[:, 1]   # Get validation probabilities from our training data
         
-        model_params = self.model.get_params().copy()
-        for param in ['early_stopping_round', 'eval_metric', 'eval_set']:
-            model_params.pop(param, None)
-            
-        self.model_main = LGBMClassifier(**model_params).fit(
-            X_train_main, y_train_main,
-            sample_weight=sample_weights_main
+        # Fit calibrator on validation set
+        self.calibrator = IsotonicRegression(out_of_bounds='clip')      # Initialize calibrator
+        self.calibrator.fit(val_probs, y_val)                           # Fit calibrator on validation probabilities
+        
+        # Transform test predictions
+        self.y_pred_calibrated = self.calibrator.transform(             # Original testing predictions are calibrated
+            self.model.predict_proba(self.X_test)[:, 1]                
         )
         
-        val_probs = self.model_main.predict_proba(X_val)[:, 1]
-        self.calibrator = IsotonicRegression(out_of_bounds='clip')
-        self.calibrator.fit(val_probs, y_val, sample_weight=sample_weights_val)
-        
-        self.y_pred_calibrated = self.calibrator.transform(
-            self.model_main.predict_proba(self.X_test)[:, 1]
-        )
         return self.y_pred_calibrated
     
     def tune_threshold(self, min_recall: float = 0.5, min_precision: float = 0.65) -> tuple:
         """Tune threshold on current predictions."""
         print("\n🎯 Tuning threshold...")
         
-        predictions = self.y_pred_calibrated if self.calibrator else self.y_pred_proba
-        precisions, recalls, thresholds = precision_recall_curve(self.y_test, predictions)
+        predictions = self.y_pred_calibrated if self.calibrator else self.y_pred_proba      # Store predictions, use calibrated probabilities if calibrator exists
+        precisions, recalls, thresholds = precision_recall_curve(self.y_test, predictions)  # Get precision, recall, and thresholds from our testing predictions
         
-        viable = np.where((recalls[:-1] >= min_recall) & (precisions[:-1] >= min_precision))[0]
-        if len(viable) > 0:
-            best_idx = viable[np.argmax(precisions[viable])]
-            self.optimal_threshold = thresholds[best_idx]
+        viable = np.where((recalls[:-1] >= min_recall) & (precisions[:-1] >= min_precision))[0] # Get viable thresholds based on minimum recall and precision
+
+        if len(viable) > 0: # If there are viable thresholds                
+            best_idx = viable[np.argmax(precisions[viable])]    # Get the best index based on the highest precision
+            self.optimal_threshold = thresholds[best_idx]       # Set the optimal threshold to the best index
         else:
-            self.optimal_threshold = 0.5
+            self.optimal_threshold = 0.5    # If no viable thresholds, set optimal threshold to 0.5
             
         print(f"Optimal threshold: {self.optimal_threshold:.4f}")
         return self.optimal_threshold
@@ -153,6 +147,7 @@ class ModelManager:
         """Generate diagnostic visualizations."""
         print("\n📈 Generating diagnostic plots...")
         
+        # This functions just calls all our other plotting functions.
         self.plot_threshold_tuning()
         self.plot_shap_analysis()
         self.plot_feature_importance()
@@ -180,7 +175,7 @@ class ModelManager:
         """Plot SHAP value analysis with different options."""
         print("\n🎯 Generating SHAP analysis...")
         
-        explainer = shap.TreeExplainer(self.model_main)
+        explainer = shap.TreeExplainer(self.model)  # Changed from model_main
         shap_values = explainer.shap_values(self.X_test)
         
         if plot_type == 'summary':
@@ -199,7 +194,7 @@ class ModelManager:
         
         importance = pd.DataFrame({
             'feature': self.X_train.columns,
-            'importance': self.model_main.feature_importances_
+            'importance': self.model.feature_importances_  # Changed from model_main
         }).sort_values('importance', ascending=False)
         
         plt.figure(figsize=(12, 6))
@@ -211,17 +206,18 @@ class ModelManager:
     
     def get_metrics(self) -> dict:
         """Calculate metrics using current model state."""
-        predictions = self.y_pred_calibrated if self.calibrator else self.y_pred_proba
-        y_pred = (predictions >= self.optimal_threshold).astype(int)
+        predictions = self.y_pred_calibrated if self.calibrator else self.y_pred_proba  # Get predictions, use calibrated probabilities if calibrator exists
+        y_pred = (predictions >= self.optimal_threshold).astype(int)            # Get predictions based on optimal threshold
         
-        report = classification_report(
+        report = classification_report(     # Get classification report
             self.y_test, y_pred,
-            digits=4,
+            digits=5,
             target_names=['Class 0', 'Class 1'],
             output_dict=True
         )
         
-        metrics = {
+        metrics = {     # Store metrics in a dictionary
+
             # Overall metrics
             'accuracy': report['accuracy'],
             'precision': report['weighted avg']['precision'],
@@ -304,7 +300,7 @@ class ModelManager:
         
         # Train on full dataset
         print("Training final model...")
-        sample_weights = np.where(y_full == 1, 2, 1)  # Use same weight multiplier
+        sample_weights = np.where(y_full == 1, 2, 1)  # Use same weight multiplier of 2 by default
         self.model.fit(X_full, y_full, sample_weight=sample_weights)
         
         # Optional calibration on full dataset
