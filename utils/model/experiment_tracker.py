@@ -6,8 +6,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.db.classes import Experiment, Results  # Database models
 from src.db.db import SessionLocal            # Database session factory
 from typing import Dict, List, Optional   # Type hints
-from datetime import datetime
+from datetime import datetime, timezone  # Add timezone to imports
 import json # For serializing hyperparameters and features
+from sqlalchemy import String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import cast, String, JSON, text
 
 class ExperimentTracker:
     """
@@ -24,40 +27,38 @@ class ExperimentTracker:
         """Allows usage with 'with' statement."""
         return self
 
-    def __exit__(self):
-        """Ensures database connection is closed after usage."""
-        self.db.close()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensures database connection is closed after usage.
+        
+        Args:
+            exc_type: Type of exception that occurred, if any
+            exc_val: Exception instance that occurred, if any
+            exc_tb: Traceback if exception occurred
+        """
+        try:
+            self.db.close()
+        except Exception as e:
+            print(f"Error closing database connection: {e}")
+            if exc_type is not None:
+                return False  # Re-raise any original exception
+        return False  # Don't suppress exceptions
 
     def get_or_create_experiment(
         self,
-        symbol: str,          # Trading pair symbol (e.g., "BTCUSDT")
-        frequency: str,       # Data timeframe (e.g., "1h", "4h")
-        threshold: float,     # Decision threshold for classification
-        target_variable: str, # Target to predict (e.g., "pump_1h")
-        hyperparameters: Dict,# Model hyperparameters
-        features: List[str]   # Feature names used in model
+        symbol: str,          
+        frequency: str,       
+        threshold: float,     
+        target_variable: str, 
+        hyperparameters: Dict,
+        features: List[str]   
     ):
         """
-        Retrieves existing experiment or creates new one if not found.
-        Returns db experiment object.
-        Prevents duplicate experiments in db by checking all parameters match exactly.
+        Creates or retrieves an experiment matching database schema exactly.
         """
+        # Ensure types match database schema
+        threshold = float(threshold) if threshold is not None else None  # Nullable Float
 
-        hyperparameters_json = json.dumps(hyperparameters, sort_keys=True)  # Serialize hyperparameters
-        features_json = json.dumps(features, sort_keys=True)                # Serialize features        
-
-        
-        # Bundle all parameters into a config dictionary
-        config = {
-            'symbol': symbol,
-            'frequency': frequency,
-            'threshold': threshold,
-            'target_variable': target_variable,
-            'hyperparameters': hyperparameters_json,
-            'features': features_json
-        }
-
-        # Query database for matching experiment
+        # Query using native JSONB operators
         existing = (
             self.db.query(Experiment)
             .filter(
@@ -65,19 +66,25 @@ class ExperimentTracker:
                 Experiment.frequency == frequency,
                 Experiment.threshold == threshold,
                 Experiment.target_variable == target_variable,
-                Experiment.hyperparameters == hyperparameters_json,
-                Experiment.features == features_json
-            ).first()
+                Experiment.hyperparameters == hyperparameters,
+                Experiment.features == features
+            )
+            .first()
         )
 
         if existing:
             print("Found existing experiment")
             return existing
 
-        # Create new experiment if none found
+        # Create new experiment matching schema types
         experiment = Experiment(
-            timestamp=datetime.now(datetime.timezone.utc),  # Record creation time
-            **config  # Unpack config dictionary as kwargs
+            timestamp=datetime.now(timezone.utc),  # Fixed timezone usage
+            symbol=symbol,                    # String, not null
+            frequency=frequency,              # String, not null
+            threshold=threshold,              # Float, nullable
+            target_variable=target_variable,  # String, not null
+            hyperparameters=hyperparameters,  # JSONB, nullable
+            features=features                 # JSONB, not null
         )
         
         self.db.add(experiment)
@@ -95,22 +102,33 @@ class ExperimentTracker:
         test_window: Optional[int] = None
     ):
         """Logs experiment results to database."""
+        
+        # Convert NumPy types to Python native types
+        def convert_numpy(value):
+            return float(value.item()) if hasattr(value, 'item') else value
+
+        # Process metrics dictionary
+        processed_metrics = {
+            key: convert_numpy(value)
+            for key, value in metrics.items()
+        }
+        
         results_metrics = {
             # Overall metrics only
-            'accuracy': metrics['accuracy'],
-            'precision': metrics['precision'],
-            'recall': metrics['recall'],
-            'f1': metrics['f1'],
-            'roc_auc': metrics['auc_roc'],
-            'best_threshold': metrics['optimal_threshold'],
+            'accuracy': processed_metrics['accuracy'],
+            'precision': processed_metrics['precision'],
+            'recall': processed_metrics['recall'],
+            'f1': processed_metrics['f1'],
+            'roc_auc': processed_metrics['auc_roc'],
+            'best_threshold': processed_metrics['optimal_threshold'],
             
             # Per-class metrics (no accuracy)
-            'precision_0': metrics['precision_0'],
-            'recall_0': metrics['recall_0'],
-            'f1_0': metrics['f1_0'],
-            'precision_1': metrics['precision_1'],
-            'recall_1': metrics['recall_1'],
-            'f1_1': metrics['f1_1']
+            'precision_0': processed_metrics['precision_0'],
+            'recall_0': processed_metrics['recall_0'],
+            'f1_0': processed_metrics['f1_0'],
+            'precision_1': processed_metrics['precision_1'],
+            'recall_1': processed_metrics['recall_1'],
+            'f1_1': processed_metrics['f1_1']
         }
         
         results = Results(

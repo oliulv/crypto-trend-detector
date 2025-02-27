@@ -1,11 +1,10 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
+from sqlalchemy.dialects.postgresql import JSONB  # Import JSONB from postgresql dialect
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 import datetime
 
-
 Base = declarative_base()
-
 
 class Prediction(Base):
     """
@@ -31,8 +30,8 @@ class Experiment(Base):
     frequency = Column(String, nullable=False)
     threshold = Column(Float, nullable=True)
     target_variable = Column(String, nullable=False)
-    hyperparameters = Column(JSON, nullable=True)
-    features = Column(JSON, nullable=False)
+    hyperparameters = Column(JSONB, nullable=True)
+    features = Column(JSONB, nullable=False)
     
     # Define relationship to results
     results = relationship("Results", back_populates="experiment")
