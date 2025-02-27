@@ -43,8 +43,8 @@ class ExperimentTracker:
         Prevents duplicate experiments in db by checking all parameters match exactly.
         """
 
-        hyperparameters_json = json.dumps(hyperparameters, sort_keys=True)
-        features_json = json.dumps(features, sort_keys=True)
+        hyperparameters_json = json.dumps(hyperparameters, sort_keys=True)  # Serialize hyperparameters
+        features_json = json.dumps(features, sort_keys=True)                # Serialize features        
 
         
         # Bundle all parameters into a config dictionary
@@ -87,7 +87,7 @@ class ExperimentTracker:
 
     def log_results(
         self,
-        experiment: Experiment,
+        experiment: Experiment, 
         metrics: Dict[str, float],
         walk_forward: bool = False,
         initial_train_window: Optional[int] = None,
@@ -97,7 +97,7 @@ class ExperimentTracker:
         """Logs experiment results to database."""
         results_metrics = {
             # Overall metrics only
-            'accuracy': metrics['accuracy'],       # Keep overall accuracy
+            'accuracy': metrics['accuracy'],
             'precision': metrics['precision'],
             'recall': metrics['recall'],
             'f1': metrics['f1'],
