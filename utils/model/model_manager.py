@@ -9,7 +9,7 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.isotonic import IsotonicRegression
 import os
 import shap
-from production_model import ProductionModel
+from .production_model import ProductionModel
 
 
 class ModelManager:

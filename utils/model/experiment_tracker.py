@@ -3,8 +3,8 @@ import os
 # Add project root to Python path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from db.classes import Experiment, Results  # Database models
-from db.db import SessionLocal            # Database session factory
+from src.db.classes import Experiment, Results  # Database models
+from src.db.db import SessionLocal            # Database session factory
 from typing import Dict, List, Optional   # Type hints
 from datetime import datetime
 import json # For serializing hyperparameters and features
