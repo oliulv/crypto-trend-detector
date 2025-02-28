@@ -6,7 +6,7 @@ import numpy as np
 from datetime import datetime
 import sys
 from scipy.stats import kurtosis, entropy
-
+from data_integrity import DataIntegrityChecker
 
 # Basic parameters
 symbol = "BTCUSDT"
@@ -334,3 +334,13 @@ if __name__ == "__main__":
     print(f"Total records: {len(df)}")
     print(f"Positive signals: {df['label'].sum()} ({df['label'].mean()*100:.2f}%)")
     print(f"Saved file: {data_filename} to: {data_path}")
+
+    # Add divider and sleep
+    print("\n" + "=" * 80)
+    print("Running data integrity check...")
+    time.sleep(5)
+    print("=" * 80 + "\n")
+    
+    # Run data integrity check with full filepath
+    checker = DataIntegrityChecker()
+    checker.analyze_dataset(df, data_path)  # Use data_path instead of data_filename
