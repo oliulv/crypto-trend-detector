@@ -9,9 +9,9 @@ from scipy.stats import kurtosis, entropy
 
 
 # Basic parameters
-symbol = "PEPEUSDT"
+symbol = "BTCUSDT"
 interval = "1m"
-start_date = "2023-05-20"
+start_date = "2017-07-15"
 end_date = datetime.now().strftime("%Y-%m-%d")
 
 # Label parameters

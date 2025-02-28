@@ -46,13 +46,24 @@ class DataIntegrityChecker:
         if not df[self.timestamp_col].is_monotonic_increasing:
             issues['ordering_issues'].append("Timestamps are not strictly increasing")
 
-        # Check time intervals
-        time_diff = df[self.timestamp_col].diff().dt.total_seconds()
-        irregular_intervals = time_diff[time_diff != time_diff.mode()[0]]
+        # Enhanced irregular intervals check
+        time_diff = df[self.timestamp_col].diff()
+        # Skip the first row as it will have NaT (Not a Time) difference
+        time_diff = time_diff[1:]
+        expected_interval = time_diff.mode()[0]
+        irregular_intervals = time_diff[time_diff != expected_interval]
+        
         if not irregular_intervals.empty:
             issues['irregular_intervals'].append(
-                f"Found {len(irregular_intervals)} irregular time intervals"
+                f"Expected interval: {expected_interval}, found {len(irregular_intervals)} irregular intervals"
             )
+            # Add details for the first 5 irregular intervals
+            for i, (idx, interval) in enumerate(irregular_intervals.items()[:5]):
+                current_timestamp = df.iloc[idx][self.timestamp_col]
+                previous_timestamp = df.iloc[idx-1][self.timestamp_col]
+                issues['irregular_intervals'].append(
+                    f"  - At {current_timestamp}: Interval of {interval} (previous: {previous_timestamp})"
+                )
 
         has_leakage = any(len(v) > 0 for v in issues.values())
         return LeakageReport(
