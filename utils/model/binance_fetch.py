@@ -6,12 +6,12 @@ import numpy as np
 from datetime import datetime
 import sys
 from scipy.stats import kurtosis, entropy
-
+from data_integrity import DataIntegrityChecker
 
 # Basic parameters
-symbol = "BTCUSDT"
+symbol = "SHIBUSDT"
 interval = "1m"
-start_date = "2017-07-15"
+start_date = "2021-05-10"
 end_date = datetime.now().strftime("%Y-%m-%d")
 
 # Label parameters
@@ -59,6 +59,20 @@ class TerminalVisuals:
         sys.stdout.flush()
 
 
+def get_interval_milliseconds(interval):
+    """Convert interval string to milliseconds"""
+    unit = interval[-1]
+    value = int(interval[:-1])
+    
+    multipliers = {
+        'm': 60 * 1000,        # minutes to milliseconds
+        'h': 60 * 60 * 1000,   # hours to milliseconds
+        'd': 24 * 60 * 60 * 1000,  # days to milliseconds
+        'w': 7 * 24 * 60 * 60 * 1000,  # weeks to milliseconds
+    }
+    
+    return value * multipliers[unit]
+
 def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     base_url = "https://api.binance.com/api/v3/klines"
     data = []
@@ -69,7 +83,10 @@ def fetch_pepe_data_with_window_label(symbol, interval, start_date, end_date):
     print(f"Fetching {symbol} data")
     print(f"Period: {start_date} to {end_date}\n")
     
-    total_pages = ((end_time - start_time) // (1000 * 60 * 1000)) + 1
+    # Calculate total pages based on interval
+    interval_ms = get_interval_milliseconds(interval)
+    total_intervals = (end_time - start_time) // interval_ms
+    total_pages = (total_intervals // 1000) + 1  # 1000 is Binance's limit per request
     page_count = 0
 
     while start_time < end_time:
@@ -334,3 +351,13 @@ if __name__ == "__main__":
     print(f"Total records: {len(df)}")
     print(f"Positive signals: {df['label'].sum()} ({df['label'].mean()*100:.2f}%)")
     print(f"Saved file: {data_filename} to: {data_path}")
+
+    # Add divider and sleep
+    print("\n" + "=" * 80)
+    print("Running data integrity check...")
+    time.sleep(5)
+    print("=" * 80 + "\n")
+    
+    # Run data integrity check with full filepath
+    checker = DataIntegrityChecker()
+    checker.analyze_dataset(df, data_path)  # Use data_path instead of data_filename
