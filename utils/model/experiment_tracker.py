@@ -87,10 +87,10 @@ class ExperimentTracker:
         self,
         experiment: Experiment, 
         metrics: Dict[str, float],
+        test_window_days: Optional[int] = None,
         walk_forward: bool = False,
         initial_train_window: Optional[int] = None,
-        step: Optional[int] = None,
-        test_window_days: Optional[int] = None
+        step: Optional[int] = None
     ):
         """Logs experiment results to database if no identical result exists."""
         
