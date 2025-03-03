@@ -90,7 +90,7 @@ class ExperimentTracker:
         walk_forward: bool = False,
         initial_train_window: Optional[int] = None,
         step: Optional[int] = None,
-        test_window: Optional[int] = None
+        test_window_days: Optional[int] = None
     ):
         """Logs experiment results to database if no identical result exists."""
         
@@ -102,7 +102,7 @@ class ExperimentTracker:
                 Results.walk_forward == walk_forward,
                 Results.initial_train_window == initial_train_window,
                 Results.step == step,
-                Results.test_window == test_window
+                Results.test_window == test_window_days
             )
             .first()
         )
@@ -143,7 +143,7 @@ class ExperimentTracker:
             walk_forward=walk_forward,
             initial_train_window=initial_train_window,
             step=step,
-            test_window=test_window,
+            test_window=test_window_days,
             **results_metrics
         )
         
