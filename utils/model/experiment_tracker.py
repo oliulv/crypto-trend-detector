@@ -7,10 +7,6 @@ from src.db.classes import Experiment, Results  # Database models
 from src.db.db import SessionLocal            # Database session factory
 from typing import Dict, List, Optional   # Type hints
 from datetime import datetime, timezone  # Add timezone to imports
-import json # For serializing hyperparameters and features
-from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import cast, String, JSON, text
 
 class ExperimentTracker:
     """
@@ -46,8 +42,7 @@ class ExperimentTracker:
     def get_or_create_experiment(
         self,
         symbol: str,          
-        frequency: str,       
-        threshold: float,     
+        frequency: str,         
         target_variable: str, 
         hyperparameters: Dict,
         features: List[str]   
@@ -55,8 +50,6 @@ class ExperimentTracker:
         """
         Creates or retrieves an experiment matching database schema exactly.
         """
-        # Ensure types match database schema
-        threshold = float(threshold) if threshold is not None else None  # Nullable Float
 
         # Query using native JSONB operators
         existing = (
@@ -64,7 +57,6 @@ class ExperimentTracker:
             .filter(
                 Experiment.symbol == symbol,
                 Experiment.frequency == frequency,
-                Experiment.threshold == threshold,
                 Experiment.target_variable == target_variable,
                 Experiment.hyperparameters == hyperparameters,
                 Experiment.features == features
@@ -81,7 +73,6 @@ class ExperimentTracker:
             timestamp=datetime.now(timezone.utc),  # Fixed timezone usage
             symbol=symbol,                    # String, not null
             frequency=frequency,              # String, not null
-            threshold=threshold,              # Float, nullable
             target_variable=target_variable,  # String, not null
             hyperparameters=hyperparameters,  # JSONB, nullable
             features=features                 # JSONB, not null

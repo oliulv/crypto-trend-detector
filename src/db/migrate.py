@@ -1,20 +1,30 @@
 from sqlalchemy import create_engine, inspect
-from classes import Base
+from classes import Base, Experiment, Results
 from db import DATABASE_URL
 
 def migrate_database():
     engine = create_engine(DATABASE_URL)
     inspector = inspect(engine)
-    existing_tables = inspector.get_table_names()
     
-    # Create new tables only if they don't exist
-    Base.metadata.create_all(
+    # Drop specific tables if they exist
+    Base.metadata.drop_all(
         engine,
-        tables=[table for table in Base.metadata.tables.values()
-                if table.name not in existing_tables]
+        tables=[
+            Base.metadata.tables['experiments'],
+            Base.metadata.tables['results']
+        ]
     )
     
-    print("✅ Migration complete - Added new tables while preserving existing data")
+    # Recreate the tables
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            Base.metadata.tables['experiments'],
+            Base.metadata.tables['results']
+        ]
+    )
+    
+    print("✅ Migration complete - Experiments and Results tables have been reset")
 
 if __name__ == "__main__":
     migrate_database()
