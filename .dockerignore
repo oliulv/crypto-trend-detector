@@ -1,0 +1,43 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Data and models
+data/*
+!data/.gitkeep
+notebooks/*
+*.csv
+
+# Development
+.vscode/
+.idea/
+*.log
+.DS_Store
+*.swp
+*.swo
+
+# Documentation
+docs/
+README.md
+CHANGELOG.md
+LICENSE
+
+# Testing
+tests/
+.coverage
+htmlcov/
+.pytest_cache/

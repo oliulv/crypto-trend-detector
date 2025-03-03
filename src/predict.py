@@ -49,7 +49,8 @@ class LiveTradingBot:
             ping_interval=20,
             ping_timeout=60,
             close_timeout=60,
-            max_size=2**20
+            max_size=2**20,
+            max_queue=32,  # Add queue limit
         )
 
     async def run(self):
@@ -64,7 +65,8 @@ class LiveTradingBot:
                     
                     while True:  # Inner loop for messages
                         try:
-                            message = await asyncio.wait_for(ws.recv(), timeout=65)  # Add timeout
+                            # Add longer timeout
+                            message = await asyncio.wait_for(ws.recv(), timeout=120)
                             data = json.loads(message)
                             candle = data['k']
 
@@ -88,34 +90,33 @@ class LiveTradingBot:
                                     print("\nWaiting for next candle...")
 
                         except asyncio.TimeoutError:
-                            print("No message received within timeout period, sending ping...")
-                            pong_waiter = await ws.ping()
-                            await asyncio.wait_for(pong_waiter, timeout=10)
+                            print("No message received within timeout period, attempting reconnect...")
+                            break  # Break inner loop to trigger reconnection
+                        except Exception as e:
+                            print(f"Error processing message: {str(e)}")
+                            await asyncio.sleep(1)  # Add delay before retry
                             continue
 
-            except (websockets.ConnectionClosed,
-                   websockets.InvalidStatus,
-                   ConnectionRefusedError,
-                   asyncio.TimeoutError) as e:
-                print(f"WebSocket error: {str(e)}")
+            except Exception as e:
+                print(f"Connection error: {str(e)}")
                 self.reconnect_attempts += 1
                 
                 if self.reconnect_attempts >= self.max_reconnect_attempts:
-                    print("Max reconnection attempts reached. Exiting...")
-                    raise
+                    print("Max reconnection attempts reached, waiting longer...")
+                    await asyncio.sleep(300)  # Wait 5 minutes before resetting counter
+                    self.reconnect_attempts = 0
+                    continue
 
                 wait_time = self.base_retry_interval * (2 ** (self.reconnect_attempts - 1))
                 print(f"Attempting to reconnect in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
                 continue
 
-            except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                raise
-
             finally:
-                outcome_updater.cancel()
-                batch_handler.cancel()
+                if 'outcome_updater' in locals():
+                    outcome_updater.cancel()
+                if 'batch_handler' in locals():
+                    batch_handler.cancel()
     
     def load_model(self):
         """Load trained model, handling tuple cases (model, calibrator)."""
