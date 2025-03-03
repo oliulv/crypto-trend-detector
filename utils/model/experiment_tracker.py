@@ -92,13 +92,29 @@ class ExperimentTracker:
         step: Optional[int] = None,
         test_window: Optional[int] = None
     ):
-        """Logs experiment results to database."""
+        """Logs experiment results to database if no identical result exists."""
         
-        # Convert NumPy types to Python native types
+        # Check for existing results with same parameters
+        existing_result = (
+            self.db.query(Results)
+            .filter(
+                Results.experiment_id == experiment.experiment_id,
+                Results.walk_forward == walk_forward,
+                Results.initial_train_window == initial_train_window,
+                Results.step == step,
+                Results.test_window == test_window
+            )
+            .first()
+        )
+
+        if existing_result:
+            print(f"Identical result already exists for experiment ID: {experiment.experiment_id}")
+            return existing_result
+
+        # Continue with existing logging logic if no duplicate found
         def convert_numpy(value):
             return float(value.item()) if hasattr(value, 'item') else value
 
-        # Process metrics dictionary
         processed_metrics = {
             key: convert_numpy(value)
             for key, value in metrics.items()
@@ -133,6 +149,7 @@ class ExperimentTracker:
         
         self.db.add(results)
         self.db.commit()
+        print(f"Logged results for experiment ID: {experiment.experiment_id}")
         return results
 
     def get_experiment_results(self, experiment_id: int) -> List[Results]:
