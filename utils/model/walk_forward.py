@@ -11,14 +11,33 @@ from tqdm import tqdm
 class WalkForwardAnalyzer:
     def __init__(
         self,
-        initial_train_size: int = 43200 * 6,  
-        step_size: int = 43200,  
+        initial_train_ratio: float = 0.3,  # 30% of data for initial training
+        step_ratio: float = 0.1,           # 10% of data for each step
         threshold: float = 0.613
     ):
-        self.initial_train_size = initial_train_size    # 6 months default initial train size
-        self.step_size = step_size                      # 1 month default step size
-        self.threshold = threshold                      # 0.613 default threshold 
+        """
+        Initialize WalkForwardAnalyzer with ratio-based window sizes.
+        
+        Args:
+            initial_train_ratio: Ratio of total data to use for initial training (0-1)
+            step_ratio: Ratio of total data to use for each step (0-1)
+            threshold: Classification threshold for binary predictions
+        """
+        # Validate ratios are between 0 and 1
+        if not 0 < initial_train_ratio < 1:
+            raise ValueError("initial_train_ratio must be between 0 and 1")
+        if not 0 < step_ratio < 1:
+            raise ValueError("step_ratio must be between 0 and 1")
+            
+        self.initial_train_ratio = initial_train_ratio
+        self.step_ratio = step_ratio
+        self.threshold = threshold
         self.metrics_history = []
+        
+        # These will be set when validate() is called
+        self.initial_train_size = None
+        self.step_size = None
+        self.y = None  # Add this line to store target variable
         
     def validate(
         self,
@@ -44,6 +63,26 @@ class WalkForwardAnalyzer:
             - Array of true labels
             - List of metrics dictionaries for each iteration
         """
+        # Store y at the start of validation
+        self.y = y  # Add this line
+
+        # Calculate actual sizes based on total data length
+        total_size = len(X)
+        self.initial_train_size = int(total_size * self.initial_train_ratio)
+        self.step_size = int(total_size * self.step_ratio)
+        
+        # Ensure minimum sizes
+        if self.initial_train_size < 100:
+            raise ValueError(f"Initial training size too small: {self.initial_train_size} samples")
+        if self.step_size < 10:
+            raise ValueError(f"Step size too small: {self.step_size} samples")
+            
+        print(f"\n📊 Walk-Forward Configuration:")
+        print(f"Total data points:     {total_size:,}")
+        print(f"Initial training size: {self.initial_train_size:,} ({self.initial_train_ratio:.1%})")
+        print(f"Step size:            {self.step_size:,} ({self.step_ratio:.1%})")
+        print(f"Number of iterations:  {(total_size - self.initial_train_size) // self.step_size}\n")
+        
         if timestamp_col in X.columns:  # Sort by timestamp if available
             X = X.sort_values(by=timestamp_col)             # Features are sorted by timestamp
             X_features = X.drop(columns=[timestamp_col])    # Drop timestamp column
@@ -144,16 +183,32 @@ class WalkForwardAnalyzer:
         print(f"Steps:   {len(metrics_df)} iterations")
 
     def plot_metrics_over_time(self):
-        """Plot how metrics evolve as training data size increases."""
+        """Plot how Class 1 metrics evolve as training data size increases."""
         metrics_df = pd.DataFrame(self.metrics_history)
         
-        plt.figure(figsize=(12, 6))
-        for metric in ['accuracy', 'precision', 'recall', 'f1']:
-            plt.plot(metrics_df['train_size'], metrics_df[metric], label=metric)
+        plt.figure(figsize=(15, 8))
+        
+        # Plot Class 1 metrics
+        metrics_to_plot = {
+            'precision_1': 'Precision (Class 1)',
+            'recall_1': 'Recall (Class 1)',
+            'f1_1': 'F1 (Class 1)'
+        }
+        
+        for metric, label in metrics_to_plot.items():
+            plt.plot(metrics_df['train_size'], metrics_df[metric], label=label)
+        
+        # Add class distribution line using stored self.y
+        if self.y is not None:  # Check if we have the target variable
+            class_ratio = metrics_df['test_size'].map(
+                lambda x: sum(self.y.iloc[-x:] == 1) / x
+            )
+            plt.plot(metrics_df['train_size'], class_ratio, 
+                    label='Class 1 Ratio', linestyle='--', alpha=0.5)
         
         plt.xlabel('Training Data Size')
         plt.ylabel('Score')
-        plt.title('Model Performance Metrics Over Time')
+        plt.title('Model Performance Metrics Over Time (Class 1)')
         plt.legend()
         plt.grid(True)
         return plt

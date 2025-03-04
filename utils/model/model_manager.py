@@ -312,6 +312,25 @@ class ModelManager:
         
         return self.model
 
+    def get_walk_forward_params(self) -> dict:
+        """Get model parameters suitable for walk-forward validation."""
+        # Get current model parameters
+        params = self.model.get_params()
+        
+        # Remove validation-specific parameters
+        walk_forward_params = {
+            k: v for k, v in params.items() 
+            if k not in ['early_stopping_round', 'eval_metric', 'callbacks']
+        }
+        
+        return walk_forward_params
+    
+    def configure_walk_forward_model(self):
+        """Configure model for walk-forward validation."""
+        walk_forward_params = self.get_walk_forward_params()
+        self.model = LGBMClassifier(**walk_forward_params)
+        return self.model
+
 if __name__ == "__main__":
     symbol = "PEPEUSDT"
     start_date = "2023-05-20"
