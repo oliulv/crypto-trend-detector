@@ -9,6 +9,7 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.isotonic import IsotonicRegression
 import os
 import shap
+from typing import List, Dict
 from .production_model import ProductionModel
 
 
@@ -258,6 +259,40 @@ class ModelManager:
         
         print(f"\nUsing {'calibrated' if self.calibrator else 'raw'} probabilities")
         print(f"Classification threshold: {self.optimal_threshold:.4f}")
+        
+        return metrics
+    
+    def get_walk_forward_metrics(self, metrics_history: List[Dict]) -> dict:
+        """Calculate aggregated metrics from walk-forward validation results."""
+        metrics_df = pd.DataFrame(metrics_history)
+        
+        # Calculate average metrics across all iterations
+        metrics = {
+            'accuracy': metrics_df['accuracy'].mean(),
+            'precision': metrics_df['precision_1'].mean(),  # Class 1 specific
+            'recall': metrics_df['recall_1'].mean(),        # Class 1 specific
+            'f1': metrics_df['f1_1'].mean(),               # Class 1 specific
+            'auc_roc': metrics_df['auc_roc'].mean() if 'auc_roc' in metrics_df else None,
+            'optimal_threshold': self.optimal_threshold,
+            
+            # Class 0 specific metrics
+            'precision_0': metrics_df['precision_0'].mean(),
+            'recall_0': metrics_df['recall_0'].mean(),
+            'f1_0': metrics_df['f1_0'].mean(),
+            
+            # Class 1 specific metrics (same as above but renamed for consistency)
+            'precision_1': metrics_df['precision_1'].mean(),
+            'recall_1': metrics_df['recall_1'].mean(),
+            'f1_1': metrics_df['f1_1'].mean()
+        }
+        
+        print("\n📊 Walk-Forward Validation Results")
+        print("=" * 50)
+        print(f"Metrics averaged across {len(metrics_df)} iterations:")
+        print(f"Accuracy:  {metrics['accuracy']:.4f}")
+        print(f"Precision: {metrics['precision']:.4f}")
+        print(f"Recall:    {metrics['recall']:.4f}")
+        print(f"F1-Score:  {metrics['f1']:.4f}")
         
         return metrics
     

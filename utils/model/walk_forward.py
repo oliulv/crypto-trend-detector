@@ -117,6 +117,7 @@ class WalkForwardAnalyzer:
                 'iteration': len(self.metrics_history) + 1, # Iteration number
                 'train_size': len(X_train),                 # Size of training data
                 'test_size': len(X_test),                   # Size of test data
+                'threshold': self.threshold,                
                 'accuracy': accuracy_score(y_test, binary_preds),                      
                 'precision': precision_score(y_test, binary_preds, zero_division=0),
                 'recall': recall_score(y_test, binary_preds, zero_division=0),
@@ -126,7 +127,8 @@ class WalkForwardAnalyzer:
                 'recall_0': recall_score(y_test, binary_preds, pos_label=0, zero_division=0),
                 'recall_1': recall_score(y_test, binary_preds, pos_label=1, zero_division=0),
                 'f1_0': f1_score(y_test, binary_preds, pos_label=0, zero_division=0),
-                'f1_1': f1_score(y_test, binary_preds, pos_label=1, zero_division=0)
+                'f1_1': f1_score(y_test, binary_preds, pos_label=1, zero_division=0),
+                'auc_roc': roc_auc_score(y_test, proba_preds)  # Add ROC-AUC calculation
             }
             self.metrics_history.append(metrics)
             

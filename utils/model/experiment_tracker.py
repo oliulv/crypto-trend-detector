@@ -3,6 +3,7 @@ import os
 # Add project root to Python path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+import pandas as pd
 from src.db.classes import Experiment, Results  # Database models
 from src.db.db import SessionLocal            # Database session factory
 from typing import Dict, List, Optional   # Type hints
@@ -89,7 +90,7 @@ class ExperimentTracker:
         metrics: Dict[str, float],
         test_window_days: Optional[int] = None,
         walk_forward: bool = False,
-        initial_train_window: Optional[int] = None,
+        initial_train_ratio: Optional[int] = None,
         step: Optional[int] = None
     ):
         """Logs experiment results to database if no identical result exists."""
@@ -100,7 +101,7 @@ class ExperimentTracker:
             .filter(
                 Results.experiment_id == experiment.experiment_id,
                 Results.walk_forward == walk_forward,
-                Results.initial_train_window == initial_train_window,
+                Results.initial_train_ratio == initial_train_ratio,
                 Results.step == step,
                 Results.test_window == test_window_days
             )
@@ -141,7 +142,7 @@ class ExperimentTracker:
         results = Results(
             experiment_id=experiment.experiment_id,
             walk_forward=walk_forward,
-            initial_train_window=initial_train_window,
+            initial_train_ratio=initial_train_ratio,
             step=step,
             test_window=test_window_days,
             **results_metrics
@@ -150,6 +151,71 @@ class ExperimentTracker:
         self.db.add(results)
         self.db.commit()
         print(f"Logged results for experiment ID: {experiment.experiment_id}")
+        return results
+
+    def log_walk_forward_results(
+        self,
+        experiment: Experiment,
+        metrics_history: List[Dict],
+        initial_train_ratio: float,
+        step_ratio: float,
+        test_window_days: Optional[int] = None
+    ) -> Results:
+        """Log walk-forward validation results to database."""
+        
+        # Check for existing walk-forward results
+        existing_result = (
+            self.db.query(Results)
+            .filter(
+                Results.experiment_id == experiment.experiment_id,
+                Results.walk_forward == True
+            )
+            .first()
+        )
+        
+        if existing_result:
+            print(f"Walk-forward results already exist for experiment ID: {experiment.experiment_id}")
+            return existing_result
+        
+        # Calculate aggregated metrics from history
+        metrics_df = pd.DataFrame(metrics_history)
+        
+        # Define conversion helper (same as in log_results)
+        def convert_numpy(value):
+            return float(value.item()) if hasattr(value, 'item') else value
+        
+         # Get threshold from metrics_history
+        threshold = metrics_history[0].get('threshold', experiment.hyperparameters.get('optimal_threshold', 0.5))
+        
+        # Calculate and convert metrics
+        results_metrics = {
+            'accuracy': convert_numpy(metrics_df['accuracy'].mean()),
+            'precision': convert_numpy(metrics_df['precision_1'].mean()),
+            'recall': convert_numpy(metrics_df['recall_1'].mean()),
+            'f1': convert_numpy(metrics_df['f1_1'].mean()),
+            'roc_auc': convert_numpy(metrics_df['auc_roc'].mean()),   
+            'best_threshold': convert_numpy(threshold),
+            'precision_0': convert_numpy(metrics_df['precision_0'].mean()),
+            'recall_0': convert_numpy(metrics_df['recall_0'].mean()),
+            'f1_0': convert_numpy(metrics_df['f1_0'].mean()),
+            'precision_1': convert_numpy(metrics_df['precision_1'].mean()),
+            'recall_1': convert_numpy(metrics_df['recall_1'].mean()),
+            'f1_1': convert_numpy(metrics_df['f1_1'].mean())
+        }
+        
+        # Create new results entry
+        results = Results(
+            experiment_id=experiment.experiment_id,
+            walk_forward=True,
+            initial_train_ratio=convert_numpy(initial_train_ratio),
+            step=convert_numpy(step_ratio),
+            test_window=test_window_days,
+            **results_metrics
+        )
+        
+        self.db.add(results)
+        self.db.commit()
+        print(f"Logged walk-forward results for experiment ID: {experiment.experiment_id}")
         return results
 
     def get_experiment_results(self, experiment_id: int) -> List[Results]:
