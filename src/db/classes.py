@@ -28,7 +28,6 @@ class Experiment(Base):
     timestamp = Column(DateTime, default=datetime.datetime, nullable=False)
     symbol = Column(String, nullable=False)
     frequency = Column(String, nullable=False)
-    threshold = Column(Float, nullable=True)
     target_variable = Column(String, nullable=False)
     hyperparameters = Column(JSONB, nullable=True)
     features = Column(JSONB, nullable=False)
@@ -40,9 +39,10 @@ class Results(Base):
     __tablename__ = "results"
     result_id = Column(Integer, primary_key=True, index=True)
     experiment_id = Column(Integer, ForeignKey('experiments.experiment_id'), nullable=False)
+    best_threshold = Column(Float, nullable=True)
     walk_forward = Column(Boolean, nullable=True)
-    initial_train_window = Column(Integer, nullable=True)
-    step = Column(Integer, nullable=True)
+    initial_train_ratio = Column(Float, nullable=True)
+    step = Column(Float, nullable=True)
     test_window = Column(Integer, nullable=True)
     precision_1 = Column(Float, nullable=True)
     recall_1 = Column(Float, nullable=True)
@@ -55,7 +55,6 @@ class Results(Base):
     recall = Column(Float, nullable=False)
     f1 = Column(Float, nullable=False)
     roc_auc = Column(Float, nullable=False)
-    best_threshold = Column(Float, nullable=True)
     
     # Define relationship to experiment
     experiment = relationship("Experiment", back_populates="results")
