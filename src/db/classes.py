@@ -34,6 +34,7 @@ class Experiment(Base):
     
     # Define relationship to results
     results = relationship("Results", back_populates="experiment")
+    feature_importance = relationship("FeatureImportance", back_populates="experiment")
 
 class Results(Base):
     __tablename__ = "results"
@@ -58,3 +59,28 @@ class Results(Base):
     
     # Define relationship to experiment
     experiment = relationship("Experiment", back_populates="results")
+    feature_importance = relationship("FeatureImportance", back_populates="result")
+
+class FeatureImportance(Base):
+    __tablename__ = 'feature_importance'
+    
+    id = Column(Integer, primary_key=True)
+    experiment_id = Column(Integer, ForeignKey('experiments.experiment_id'))
+    result_id = Column(Integer, ForeignKey('results.result_id'))
+    feature_name = Column(String, nullable=False)
+    
+    # SHAP metrics
+    shap_importance = Column(Float)
+    shap_total_importance = Column(Float)
+    shap_importance_percentile = Column(Float)  # Percentile rank among SHAP values
+    shap_contribution_pct = Column(Float)       # Percentage contribution to predictions
+    
+    # LGBM metrics
+    lgbm_importance = Column(Float)
+    lgbm_total_importance = Column(Float)
+    lgbm_importance_percentile = Column(Float)  # Percentile rank among LGBM values
+    lgbm_contribution_pct = Column(Float)       # Percentage contribution to predictions
+    
+    # Relationships
+    experiment = relationship("Experiment", back_populates="feature_importance")
+    result = relationship("Results", back_populates="feature_importance")
