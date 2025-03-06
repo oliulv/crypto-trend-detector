@@ -4,10 +4,11 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 import pandas as pd
-from src.db.classes import Experiment, Results  # Database models
+from src.db.classes import Experiment, Results, FeatureImportance  # Database models
 from src.db.db import SessionLocal            # Database session factory
 from typing import Dict, List, Optional   # Type hints
 from datetime import datetime, timezone  # Add timezone to imports
+from scipy import stats
 
 class ExperimentTracker:
     """
@@ -242,3 +243,58 @@ class ExperimentTracker:
             .limit(n)
             .all()
         )
+    
+    def log_feature_importance(
+    self,
+    experiment: Experiment,
+    results: Results,
+    shap_values: dict,
+    lgbm_values: dict
+    ):
+        """Log feature importance values to database."""
+        def convert_numpy(value):
+            return float(value.item()) if hasattr(value, 'item') else float(value)
+        
+        # Convert and process SHAP values once
+        shap_importance_values = [convert_numpy(val) for val in shap_values['shap_importance']]
+        shap_total = sum(shap_importance_values)
+        
+        # Convert and process LGBM values once
+        lgbm_importance_values = [convert_numpy(val) for val in lgbm_values['importance']]
+        lgbm_total = sum(lgbm_importance_values)
+        
+        for idx, (feature, shap_importance) in enumerate(zip(
+            shap_values['feature'], 
+            shap_importance_values  # Use already converted values
+        )):
+            lgbm_importance = next(
+                (imp for feat, imp in zip(lgbm_values['feature'], lgbm_importance_values)
+                if feat == feature),
+                0.0
+            )
+            
+            # Convert percentile scores to float explicitly
+            shap_percentile = float(stats.percentileofscore(shap_importance_values, shap_importance))
+            lgbm_percentile = float(stats.percentileofscore(lgbm_importance_values, lgbm_importance))
+            
+            # Calculate contribution percentages
+            shap_contribution = float((shap_importance / shap_total) * 100)
+            lgbm_contribution = float((lgbm_importance / lgbm_total) * 100)
+            
+            importance = FeatureImportance(
+                experiment_id=experiment.experiment_id,
+                result_id=results.result_id,
+                feature_name=feature,
+                shap_importance=shap_importance,
+                shap_total_importance=shap_total,
+                shap_importance_percentile=shap_percentile,
+                shap_contribution_pct=shap_contribution,
+                lgbm_importance=lgbm_importance,
+                lgbm_total_importance=lgbm_total,
+                lgbm_importance_percentile=lgbm_percentile,
+                lgbm_contribution_pct=lgbm_contribution
+            )
+            self.db.add(importance)
+        
+        self.db.commit()
+        print(f"Logged feature importance for experiment ID: {experiment.experiment_id}")   
