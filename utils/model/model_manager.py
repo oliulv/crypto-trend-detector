@@ -172,36 +172,90 @@ class ModelManager:
         plt.legend()
         plt.show()
 
-    def plot_shap_analysis(self, plot_type='summary'):
-        """Plot SHAP value analysis with different options."""
+    def plot_shap_analysis(self, plot_type='summary', show_bottom=False, n_features=20):
+        """
+        Plot SHAP value analysis with different options.
+        
+        Args:
+            plot_type (str): Type of plot ('summary', 'bar', 'dependence')
+            show_bottom (bool): If True, show least important features
+            n_features (int): Number of features to display
+        """
         print("\n🎯 Generating SHAP analysis...")
         
-        explainer = shap.TreeExplainer(self.model)  # Changed from model_main
+        explainer = shap.TreeExplainer(self.model)
         shap_values = explainer.shap_values(self.X_test)
         
+        # Calculate feature importance based on SHAP values
+        feature_importance = np.abs(shap_values).mean(0)
+        feature_importance_df = pd.DataFrame({
+            'feature': self.X_test.columns,
+            'importance': feature_importance
+        })
+        
+        total_importance = feature_importance_df['importance'].sum()
+        bottom_importance = feature_importance_df.nsmallest(n_features, 'importance')['importance'].sum()
+        top_importance = feature_importance_df.nlargest(n_features, 'importance')['importance'].sum()
+        
+        if show_bottom:
+            features_to_plot = feature_importance_df.nsmallest(n_features, 'importance')
+            print(f"\n📉 Bottom {n_features} features by SHAP importance:")
+            print(f"Bottom {n_features} features explain {(bottom_importance/total_importance*100):.2f}% of total SHAP value magnitude")
+            print(f"Top {n_features} features explain {(top_importance/total_importance*100):.2f}% of total SHAP value magnitude")
+            print(f"Ratio (Top/Bottom): {(top_importance/bottom_importance):.2f}x")
+        else:
+            features_to_plot = feature_importance_df.nlargest(n_features, 'importance')
+            print(f"\n📈 Top {n_features} features by SHAP importance:")
+            print(f"Top {n_features} features explain {(top_importance/total_importance*100):.2f}% of total SHAP value magnitude")
+            print(f"Bottom {n_features} features explain {(bottom_importance/total_importance*100):.2f}% of total SHAP value magnitude")
+            print(f"Ratio (Top/Bottom): {(top_importance/bottom_importance):.2f}x")
+        
+        # Filter X_test to only include selected features
+        X_test_filtered = self.X_test[features_to_plot['feature']]
+        shap_values_filtered = shap_values[:, features_to_plot.index]
+        
         if plot_type == 'summary':
-            shap.summary_plot(shap_values, self.X_test)
+            shap.summary_plot(shap_values_filtered, X_test_filtered)
         elif plot_type == 'bar':
-            shap.summary_plot(shap_values, self.X_test, plot_type='bar')
+            shap.summary_plot(shap_values_filtered, X_test_filtered, plot_type='bar')
         elif plot_type == 'dependence':
-            # Get most important feature
-            feature_importance = np.abs(shap_values).mean(0)
-            most_important = self.X_test.columns[feature_importance.argmax()]
-            shap.dependence_plot(most_important, shap_values, self.X_test)
+            most_important = features_to_plot.iloc[0]['feature']
+            shap.dependence_plot(most_important, shap_values_filtered, X_test_filtered)
 
-    def plot_feature_importance(self):
-        """Plot traditional feature importance."""
+    def plot_feature_importance(self, show_bottom=False, n_features=20):
+        """
+        Plot traditional feature importance.
+        
+        Args:
+            show_bottom (bool): If True, show least important features
+            n_features (int): Number of features to display
+        """
         print("\n📈 Plotting feature importance...")
         
+        # Create DataFrame with feature importance
         importance = pd.DataFrame({
             'feature': self.X_train.columns,
-            'importance': self.model.feature_importances_  # Changed from model_main
-        }).sort_values('importance', ascending=False)
+            'importance': self.model.feature_importances_
+        }).sort_values('importance', ascending=False)  # Always sort descending first
+        
+        total_importance = importance['importance'].sum()
+        
+        if show_bottom:
+            features_to_plot = importance.tail(n_features).iloc[::-1]  # Get bottom n features
+            bottom_importance = features_to_plot['importance'].sum()
+            top_importance = importance.head(n_features)['importance'].sum()
+            
+            print(f"\n📉 Bottom {n_features} features contribution:")
+            print(f"Bottom {n_features} features explain {(bottom_importance/total_importance*100):.2f}% of total importance")
+            print(f"Top {n_features} features explain {(top_importance/total_importance*100):.2f}% of total importance")
+            print(f"Ratio (Top/Bottom): {(top_importance/bottom_importance):.2f}x")
+        else:
+            features_to_plot = importance.head(n_features)
         
         plt.figure(figsize=(12, 6))
-        plt.bar(importance['feature'][:20], importance['importance'][:20])
+        plt.bar(features_to_plot['feature'], features_to_plot['importance'])
         plt.xticks(rotation=45, ha='right')
-        plt.title("Top 20 Feature Importance")
+        plt.title(f"{'Bottom' if show_bottom else 'Top'} {n_features} Feature Importance")
         plt.tight_layout()
         plt.show()
     
