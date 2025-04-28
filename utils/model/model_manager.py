@@ -10,7 +10,7 @@ from sklearn.isotonic import IsotonicRegression
 import os
 import shap
 from typing import List, Dict
-from .production_model import ProductionModel
+from ..live.production_model import ProductionModel
 
 
 class ModelManager:
